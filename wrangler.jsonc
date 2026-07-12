@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "babynote",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "babynote",
+      // 部署前先运行 `wrangler d1 create babynote`,把返回的 database_id 填到这里
+      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
