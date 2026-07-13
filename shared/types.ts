@@ -12,6 +12,7 @@ export type BloodGlucoseMoment =
   | "beforeSleep";
 
 export type ExcretionType = "poop" | "pee";
+export type ExcretionAmount = "less" | "more";
 
 export interface FeedingRecord {
   id: number;
@@ -67,6 +68,7 @@ export interface ExcretionRecord {
   id: number;
   recordedAt: number;
   type: ExcretionType;
+  amount: ExcretionAmount | null;
   note: string;
 }
 

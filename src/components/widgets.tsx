@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   DateDisplay,
   bloodGlucoseMomentNames,
@@ -177,10 +177,13 @@ export function TextField({
 
 // ---------- 距离上次喂奶高亮块 ----------
 
-export function IntervalHighlight({ text }: { text: string }) {
+export function IntervalHighlight({ text, progressMillis }: { text: string; progressMillis: number }) {
+  const [initialProgressMillis] = useState(progressMillis);
   return (
-    <div className="interval-highlight">
-      <span className="label">距离上次喂奶</span>
+    <div
+      className="interval-highlight"
+      style={{ animationDelay: `${-Math.max(initialProgressMillis, 0)}ms` }}
+    >
       <span className="value">{text}</span>
     </div>
   );
@@ -409,5 +412,5 @@ export function EmptyState({ emoji, text, description }: { emoji: string; text: 
 
 export function feedingIntervalText(previousStart: number | null, from: number): string {
   if (previousStart == null) return "还没有喂奶记录";
-  return DateDisplay.durationText(Math.floor((from - previousStart) / 1000));
+  return DateDisplay.compactDurationText((from - previousStart) / 1000);
 }

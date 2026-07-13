@@ -20,6 +20,22 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+const TAB_PATHS: Record<TabKey, string> = {
+  home: "/",
+  timeline: "/timeline",
+  quickLog: "/quick-log",
+  stats: "/stats",
+  settings: "/settings",
+};
+
+function tabFromPath(pathname: string): TabKey {
+  if (pathname.startsWith("/timeline")) return "timeline";
+  if (pathname.startsWith("/quick-log")) return "quickLog";
+  if (pathname.startsWith("/stats")) return "stats";
+  if (pathname.startsWith("/settings")) return "settings";
+  return "home";
+}
+
 export function App() {
   const [authState, setAuthState] = useState<AuthState>("checking");
 
@@ -70,7 +86,7 @@ function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
   return (
     <div className="login-page">
-      <span style={{ fontSize: 48 }}>🍼</span>
+      <img className="login-logo" src="/icon-192.png" alt="宝宝笔记 Logo" />
       <h1 style={{ margin: 0 }}>宝宝笔记</h1>
       <form
         className="login-card"
@@ -101,13 +117,25 @@ function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 }
 
 function AuthedApp({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<TabKey>("home");
+  const [tab, setTab] = useState<TabKey>(() => tabFromPath(window.location.pathname));
   const { records, isLoading } = useData();
   const [settings] = useSettings();
   const alarmState = useSyncExternalStore(
     (listener) => feedingAlarm.subscribe(listener),
     () => feedingAlarm.getState(),
   );
+
+  useEffect(() => {
+    const handlePopState = () => setTab(tabFromPath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateToTab = (nextTab: TabKey) => {
+    const path = TAB_PATHS[nextTab];
+    if (window.location.pathname !== path) window.history.pushState({}, "", path);
+    setTab(nextTab);
+  };
 
   // 喂奶记录或闹钟设置变化时重新计算提醒时间
   const latestFeeding = records.feedings[0] ?? null;
@@ -157,15 +185,18 @@ function AuthedApp({ onLogout }: { onLogout: () => void }) {
       <nav className="tab-bar">
         <div className="tab-bar-inner">
           {TABS.map((item) => (
-            <button
+            <a
               key={item.key}
-              type="button"
-              className={`tab-item ${tab === item.key ? "active" : ""}`}
-              onClick={() => setTab(item.key)}
+              href={TAB_PATHS[item.key]}
+              className={`tab-item ${item.key === "quickLog" ? "primary" : ""} ${tab === item.key ? "active" : ""}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateToTab(item.key);
+              }}
             >
               <span className="tab-icon">{item.icon}</span>
               <span>{item.label}</span>
-            </button>
+            </a>
           ))}
         </div>
       </nav>

@@ -3,6 +3,27 @@
   "name": "babynote",
   "main": "worker/index.ts",
   "compatibility_date": "2025-06-01",
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "realtime-v1",
+      "new_sqlite_classes": ["RealtimeHub"]
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "babynote.baby",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "single-page-application",
@@ -12,8 +33,7 @@
     {
       "binding": "DB",
       "database_name": "babynote",
-      // 部署前先运行 `wrangler d1 create babynote`,把返回的 database_id 填到这里
-      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
+      "database_id": "ccb7f77a-8b90-4343-a4c4-608487b0e286"
     }
   ],
   "observability": {

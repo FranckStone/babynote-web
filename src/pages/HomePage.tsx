@@ -1,63 +1,18 @@
-import { useState } from "react";
-import type { RecordKind } from "../../shared/types";
-import { RecordFormModal } from "../components/RecordForm";
-import { EmptyState, Modal, SummaryCard } from "../components/widgets";
+import { EmptyState, SummaryCard } from "../components/widgets";
 import { DateDisplay, WeightDisplay, bloodGlucoseMomentNames, excretionTypeNames, format1 } from "../lib/display";
-import { buildRecentTimeline, recordKindMeta, recordKinds } from "../lib/timeline";
+import { buildRecentTimeline, recordKindMeta } from "../lib/timeline";
 import { useData } from "../store";
 
 export function HomePage() {
   const { records } = useData();
-  const [isPickingKind, setIsPickingKind] = useState(false);
-  const [formKind, setFormKind] = useState<RecordKind | null>(null);
 
   const recentItems = buildRecentTimeline(records, 4);
 
   const todayCount = (times: number[]) => times.filter((time) => DateDisplay.isToday(time)).length;
 
-  const subtitleFor = (kind: RecordKind): string => {
-    switch (kind) {
-      case "feeding":
-        return records.feedings[0] ? `最近 ${DateDisplay.time(records.feedings[0].startedAt)}` : "选择奶量后直接记录";
-      case "weight":
-        return records.weights[0] ? `最近 ${WeightDisplay.jinText(records.weights[0].weightKG)}` : "记录孕期体重变化";
-      case "medication":
-        return records.medications[0] ? `最近 ${records.medications[0].name}` : "记录药名和剂量";
-      case "checkup":
-        return records.checkups[0] ? `最近 ${records.checkups[0].location}` : "记录产检和检查结果";
-      case "fetalMovement":
-        return records.fetalMovements[0]
-          ? `最近 ${DateDisplay.time(records.fetalMovements[0].recordedAt)}`
-          : "记录胎动次数和时长";
-      case "bloodGlucose":
-        return records.bloodGlucoses[0]
-          ? `最近 ${bloodGlucoseMomentNames[records.bloodGlucoses[0].moment]} ${format1(records.bloodGlucoses[0].valueMMOL)} mmol/L`
-          : "记录餐前餐后和睡前血糖";
-      case "excretion":
-        return records.excretions[0]
-          ? `最近 ${excretionTypeNames[records.excretions[0].type]} ${DateDisplay.time(records.excretions[0].recordedAt)}`
-          : "记录拉屎和撒尿";
-    }
-  };
-
   return (
     <div className="page home-page">
-      <h1 className="page-title">
-        宝宝笔记
-        <button type="button" onClick={() => setIsPickingKind(true)} aria-label="快速记录" style={{ fontSize: 24 }}>
-          ＋
-        </button>
-      </h1>
-
-      <section className="hero-card">
-        <h2>今天最重要的是少一步操作。</h2>
-        <p className="muted small" style={{ margin: 0 }}>
-          喂奶、屎尿、体重、吃药、检查结果和胎动都能在几秒内记下来，后面再补充细节。
-        </p>
-        <button type="button" className="cta" onClick={() => setIsPickingKind(true)}>
-          ⊕ 现在记录
-        </button>
-      </section>
+      <h1 className="page-title">宝宝笔记</h1>
 
       <div className="grid-2 home-summary-grid">
         <SummaryCard
@@ -142,40 +97,6 @@ export function HomePage() {
         )}
       </section>
 
-      {isPickingKind && (
-        <Modal title="选择要记录的内容" onDismiss={() => setIsPickingKind(false)}>
-          <span className="muted small">点一下直接进入对应记录页</span>
-          <div className="grid-2">
-            {recordKinds.map((kind) => {
-              const meta = recordKindMeta[kind];
-              return (
-                <button
-                  key={kind}
-                  type="button"
-                  className="option-card"
-                  style={{
-                    background: `linear-gradient(135deg, color-mix(in srgb, ${meta.tint} 22%, transparent), color-mix(in srgb, ${meta.tint} 10%, transparent))`,
-                  }}
-                  onClick={() => {
-                    setFormKind(kind);
-                    setIsPickingKind(false);
-                  }}
-                >
-                  <div className="row">
-                    <span style={{ fontSize: 20 }}>{meta.emoji}</span>
-                    <span className="spacer" />
-                    <span className="muted">→</span>
-                  </div>
-                  <span className="name">{meta.name}</span>
-                  <span className="subtitle">{subtitleFor(kind)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </Modal>
-      )}
-
-      {formKind && <RecordFormModal kind={formKind} onDismiss={() => setFormKind(null)} />}
     </div>
   );
 }

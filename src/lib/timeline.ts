@@ -13,6 +13,7 @@ import {
   WeightDisplay,
   bloodGlucoseMomentNames,
   excretionTypeNames,
+  excretionAmountNames,
   feedingTypeNames,
   format1,
 } from "./display";
@@ -43,17 +44,17 @@ export const recordKindMeta: Record<RecordKind, { name: string; emoji: string; t
   checkup: { name: "检查", emoji: "🏥", tint: "#43a047" },
   fetalMovement: { name: "胎动", emoji: "👶", tint: "#26a69a" },
   bloodGlucose: { name: "血糖", emoji: "🩸", tint: "#e53935" },
-  excretion: { name: "屎尿", emoji: "🚽", tint: "#8d6e63" },
+  excretion: { name: "屎尿", emoji: "🧷", tint: "#8d6e63" },
 };
 
 export const recordKinds: RecordKind[] = [
   "feeding",
+  "excretion",
   "weight",
   "medication",
   "checkup",
   "fetalMovement",
   "bloodGlucose",
-  "excretion",
 ];
 
 export function feedingDurationMinutes(record: FeedingRecord): number | null {
@@ -156,7 +157,7 @@ function makeItems(records: AllRecords): TimelineItem[][] {
       recordedAt: record.recordedAt,
       kind: "excretion",
       title: excretionTypeNames[record.type] ?? "屎尿",
-      detail: "屎尿记录",
+      detail: record.amount ? `量：${excretionAmountNames[record.amount]}` : "屎尿记录",
       note: record.note,
       record: { kind: "excretion", record },
     })),

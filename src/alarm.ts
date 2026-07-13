@@ -147,7 +147,7 @@ class FeedingAlarmController {
       const hours = Math.floor(this.latestDelayMinutes / 60);
       const minutes = this.latestDelayMinutes % 60;
       const delayText =
-        hours > 0 && minutes > 0 ? `${hours}小时${minutes}分钟` : hours > 0 ? `${hours}小时` : `${minutes}分钟`;
+        hours > 0 && minutes > 0 ? `${hours}时${minutes}分钟` : hours > 0 ? `${hours}时` : `${minutes}分钟`;
       this.startAlarm("该喂奶了", `距离上次喂奶已经超过 ${delayText}。`, true, this.latestFeedingDate);
     }, delayMillis);
   }

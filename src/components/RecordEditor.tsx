@@ -369,6 +369,7 @@ function ExcretionEditor({ item, onDismiss, onDelete }: EditorProps) {
   const original = item.record.kind === "excretion" ? item.record.record : null;
   const [recordedAt, setRecordedAt] = useState(original?.recordedAt ?? Date.now());
   const [typeIndex, setTypeIndex] = useState(original?.type === "pee" ? 1 : 0);
+  const [amountIndex, setAmountIndex] = useState(original?.amount === "less" ? 1 : original?.amount === "more" ? 2 : 0);
   const [note, setNote] = useState(original?.note ?? "");
   if (!original) return null;
 
@@ -382,6 +383,7 @@ function ExcretionEditor({ item, onDismiss, onDelete }: EditorProps) {
         await update("excretion", original.id, {
           recordedAt,
           type: typeIndex === 0 ? "poop" : "pee",
+          amount: amountIndex === 1 ? "less" : amountIndex === 2 ? "more" : null,
           note,
         });
         onDismiss();
@@ -389,6 +391,8 @@ function ExcretionEditor({ item, onDismiss, onDelete }: EditorProps) {
     >
       <DateTimeField label="记录时间" value={recordedAt} onChange={setRecordedAt} />
       <Segmented options={["拉屎", "撒尿"]} selectedIndex={typeIndex} onSelect={setTypeIndex} />
+      <span className="field-label">量</span>
+      <Segmented options={["未选择", "少", "多"]} selectedIndex={amountIndex} onSelect={setAmountIndex} />
       <TextField label="备注" value={note} onChange={setNote} multiline />
     </Modal>
   );

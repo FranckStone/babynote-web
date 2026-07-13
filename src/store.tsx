@@ -45,6 +45,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     reload().catch(() => setIsLoading(false));
   }, [reload]);
 
+  // 事件驱动实时同步：其他设备发生写入后，WebSocket 立即通知当前页面重新读取。
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let disposed = false;
+
+    const connect = () => {
+      if (disposed || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(`${protocol}//${window.location.host}/api/events`);
+
+      socket.addEventListener("message", (event) => {
+        if (event.data === "records-changed") void reload();
+      });
+
+      socket.addEventListener("close", () => {
+        socket = null;
+        if (!disposed) reconnectTimer = window.setTimeout(connect, 1000);
+      });
+    };
+
+    connect();
+    window.addEventListener("online", connect);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("online", connect);
+      if (reconnectTimer != null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [reload]);
+
   const create = useCallback(
     async (kind: RecordKind, payload: Record<string, unknown>) => {
       await api.create(kind, payload);

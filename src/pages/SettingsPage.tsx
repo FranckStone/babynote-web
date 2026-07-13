@@ -20,12 +20,14 @@ export function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
         <label className="row" style={{ cursor: "pointer" }}>
           <span style={{ flex: 1 }}>保持屏幕常亮</span>
-          <input
-            type="checkbox"
-            style={{ width: "auto" }}
-            checked={settings.keepAwakeEnabled}
-            onChange={(event) => updateSettings({ keepAwakeEnabled: event.target.checked })}
-          />
+          <span className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={settings.keepAwakeEnabled}
+              onChange={(event) => updateSettings({ keepAwakeEnabled: event.target.checked })}
+            />
+            <span className="toggle-track" aria-hidden="true" />
+          </span>
         </label>
         <span className="muted" style={{ fontSize: 12 }}>
           开启后会阻止 iPad 自动息屏；页面切到后台时会自动释放，回到前台后重新申请。低电量模式或系统拒绝时可能无法保持常亮。
@@ -37,12 +39,14 @@ export function SettingsPage({ onLogout }: { onLogout: () => void }) {
 
         <label className="row" style={{ cursor: "pointer" }}>
           <span style={{ flex: 1 }}>开启超时闹钟</span>
-          <input
-            type="checkbox"
-            style={{ width: "auto" }}
-            checked={settings.feedingOverdueAlarmEnabled}
-            onChange={(event) => updateSettings({ feedingOverdueAlarmEnabled: event.target.checked })}
-          />
+          <span className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={settings.feedingOverdueAlarmEnabled}
+              onChange={(event) => updateSettings({ feedingOverdueAlarmEnabled: event.target.checked })}
+            />
+            <span className="toggle-track" aria-hidden="true" />
+          </span>
         </label>
 
         <div className="row">

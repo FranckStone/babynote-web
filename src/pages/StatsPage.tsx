@@ -18,10 +18,30 @@ import { useData } from "../store";
 type StatsDestination = "overview" | "feeding" | "weight" | "excretion" | "bloodGlucose";
 
 export function StatsPage() {
-  const [destination, setDestination] = useState<StatsDestination>("overview");
+  const destinationFromPath = (): StatsDestination => {
+    const value = window.location.pathname.split("/")[2];
+    if (value === "feeding" || value === "weight" || value === "excretion" || value === "bloodGlucose") {
+      return value;
+    }
+    return "overview";
+  };
+
+  const [destination, setDestination] = useState<StatsDestination>(destinationFromPath);
+
+  useEffect(() => {
+    const handlePopState = () => setDestination(destinationFromPath());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = (next: StatsDestination) => {
+    const path = next === "overview" ? "/stats" : `/stats/${next}`;
+    if (window.location.pathname !== path) window.history.pushState({}, "", path);
+    setDestination(next);
+  };
 
   if (destination === "overview") {
-    return <StatsOverview onNavigate={setDestination} />;
+    return <StatsOverview onNavigate={navigate} />;
   }
 
   const titles: Record<Exclude<StatsDestination, "overview">, string> = {
@@ -33,7 +53,7 @@ export function StatsPage() {
 
   return (
     <div className="page stats-detail-page">
-      <button type="button" className="back-button" onClick={() => setDestination("overview")}>
+      <button type="button" className="back-button" onClick={() => navigate("overview")}>
         ← 返回统计
       </button>
       <h1 className="page-title" style={{ marginTop: 0 }}>
@@ -68,7 +88,7 @@ function StatsOverview({ onNavigate }: { onNavigate: (destination: StatsDestinat
         title="喂奶记录总数"
         value={`${feedings.length}`}
         subtitle={
-          averageIntervalHours != null ? `平均间隔 ${format1(averageIntervalHours)} 小时` : "至少需要两条喂奶记录"
+          averageIntervalHours != null ? `平均间隔 ${format1(averageIntervalHours)} 时` : "至少需要两条喂奶记录"
         }
         tint="var(--pink)"
         onClick={() => onNavigate("feeding")}
@@ -216,8 +236,8 @@ function FeedingStatsRow({
     const minutes = Math.max(Math.floor((record.startedAt - previousStartedAt) / 60_000), 0);
     const hours = Math.floor(minutes / 60);
     const remaining = minutes % 60;
-    if (hours > 0 && remaining > 0) return `间隔 ${hours}小时${remaining}分钟`;
-    if (hours > 0) return `间隔 ${hours}小时`;
+    if (hours > 0 && remaining > 0) return `间隔 ${hours}时${remaining}分钟`;
+    if (hours > 0) return `间隔 ${hours}时`;
     return `间隔 ${remaining}分钟`;
   })();
 

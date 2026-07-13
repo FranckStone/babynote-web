@@ -1,11 +1,44 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { DurableObject } from "cloudflare:workers";
 
 type Bindings = {
   DB: D1Database;
   AUTH_PASSWORD: string;
   AUTH_SECRET: string;
+  REALTIME: DurableObjectNamespace<RealtimeHub>;
 };
+
+export class RealtimeHub extends DurableObject<Bindings> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/notify") {
+      for (const socket of this.ctx.getWebSockets()) {
+        try {
+          socket.send("records-changed");
+        } catch {
+          // 已断开的连接会由运行时清理。
+        }
+      }
+      return new Response(null, { status: 204 });
+    }
+
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected WebSocket", { status: 426 });
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    // 客户端心跳只用于维持连接，不触发数据读取。
+    if (message === "ping") socket.send("pong");
+  }
+}
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -83,6 +116,16 @@ app.use("/api/*", async (c, next) => {
 
 app.get("/api/me", (c) => c.json({ ok: true }));
 
+app.get("/api/events", async (c) => {
+  const hub = c.env.REALTIME.getByName("records");
+  return hub.fetch(c.req.raw);
+});
+
+async function broadcastRecordsChanged(env: Bindings): Promise<void> {
+  const hub = env.REALTIME.getByName("records");
+  await hub.fetch("https://realtime.internal/notify", { method: "POST" });
+}
+
 // ---------- 记录表配置:统一的 CRUD ----------
 
 interface TableConfig {
@@ -152,7 +195,7 @@ const TABLES: Record<string, TableConfig> = {
   excretion: {
     table: "excretion_records",
     orderBy: "recorded_at",
-    columns: { recordedAt: "recorded_at", type: "type", note: "note" },
+    columns: { recordedAt: "recorded_at", type: "type", amount: "amount", note: "note" },
     required: ["recordedAt", "type"],
   },
 };
@@ -215,6 +258,7 @@ app.post("/api/:kind", async (c) => {
     .prepare(`SELECT * FROM ${config.table} WHERE id = ?`)
     .bind(result.meta.last_row_id)
     .first();
+  await broadcastRecordsChanged(c.env);
   return c.json(rowToJson(config, row as Record<string, unknown>), 201);
 });
 
@@ -241,6 +285,7 @@ app.put("/api/:kind/:id", async (c) => {
   if (result.meta.changes === 0) return c.json({ error: "记录不存在" }, 404);
 
   const row = await c.env.DB.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).bind(id).first();
+  await broadcastRecordsChanged(c.env);
   return c.json(rowToJson(config, row as Record<string, unknown>));
 });
 
@@ -252,6 +297,7 @@ app.delete("/api/:kind/:id", async (c) => {
 
   const result = await c.env.DB.prepare(`DELETE FROM ${config.table} WHERE id = ?`).bind(id).run();
   if (result.meta.changes === 0) return c.json({ error: "记录不存在" }, 404);
+  await broadcastRecordsChanged(c.env);
   return c.json({ ok: true });
 });
 

@@ -74,6 +74,7 @@ function FeedingForm({ onDismiss }: { onDismiss: () => void }) {
       <DateTimeField label="开始时间" value={startedAt} onChange={setStartedAt} />
       <IntervalHighlight
         text={previousStart == null ? "还没有更早的喂奶记录" : feedingIntervalText(previousStart, startedAt)}
+        progressMillis={previousStart == null ? 0 : Math.max(startedAt - previousStart, 0) % 60_000}
       />
       <DateTimeField label="结束时间" value={endedAt} onChange={setEndedAt} />
       <AmountPicker
@@ -298,6 +299,7 @@ function ExcretionForm({ onDismiss }: { onDismiss: () => void }) {
   const { create } = useData();
   const [recordedAt, setRecordedAt] = useState(() => Date.now());
   const [typeIndex, setTypeIndex] = useState(0);
+  const [amountIndex, setAmountIndex] = useState(0);
   const [note, setNote] = useState("");
 
   return (
@@ -305,12 +307,19 @@ function ExcretionForm({ onDismiss }: { onDismiss: () => void }) {
       title="屎尿记录"
       onDismiss={onDismiss}
       onSave={async () => {
-        await create("excretion", { recordedAt, type: typeIndex === 0 ? "poop" : "pee", note });
+        await create("excretion", {
+          recordedAt,
+          type: typeIndex === 0 ? "poop" : "pee",
+          amount: amountIndex === 1 ? "less" : amountIndex === 2 ? "more" : null,
+          note,
+        });
         onDismiss();
       }}
     >
       <DateTimeField label="记录时间" value={recordedAt} onChange={setRecordedAt} />
       <Segmented options={["拉屎", "撒尿"]} selectedIndex={typeIndex} onSelect={setTypeIndex} />
+      <span className="field-label">量</span>
+      <Segmented options={["未选择", "少", "多"]} selectedIndex={amountIndex} onSelect={setAmountIndex} />
       <TextField label="备注" value={note} onChange={setNote} multiline />
     </Modal>
   );

@@ -58,17 +58,31 @@ export const DateDisplay = {
     const minutes = Math.floor((safe % 3600) / 60);
     const remaining = Math.floor(safe % 60);
 
-    if (days > 0) return `${days}天${hours}小时${minutes}分${remaining}秒`;
-    if (hours > 0) return `${hours}小时${minutes}分${remaining}秒`;
+    if (days > 0) return `${days}天${hours}时${minutes}分${remaining}秒`;
+    if (hours > 0) return `${hours}时${minutes}分${remaining}秒`;
     if (minutes > 0) return `${minutes}分${remaining}秒`;
     return `${remaining}秒`;
+  },
+
+  compactDurationText(seconds: number): string {
+    const safe = Math.max(Math.floor(seconds), 0);
+    const parts = [
+      { value: Math.floor(safe / 86_400), unit: "天" },
+      { value: Math.floor((safe % 86_400) / 3600), unit: "时" },
+      { value: Math.floor((safe % 3600) / 60), unit: "分" },
+      { value: safe % 60, unit: "秒" },
+    ]
+      .filter((part) => part.value > 0)
+      .slice(0, 2);
+
+    return parts.length > 0 ? parts.map((part) => `${part.value}${part.unit}`).join("") : "0秒";
   },
 
   delayText(minutes: number): string {
     const hours = Math.floor(minutes / 60);
     const remaining = minutes % 60;
-    if (hours > 0 && remaining > 0) return `${hours}小时${remaining}分钟`;
-    if (hours > 0) return `${hours}小时`;
+    if (hours > 0 && remaining > 0) return `${hours}时${remaining}分钟`;
+    if (hours > 0) return `${hours}时`;
     return `${minutes}分钟`;
   },
 };
@@ -156,6 +170,11 @@ export const bloodGlucoseMomentNames: Record<string, string> = {
 export const excretionTypeNames: Record<string, string> = {
   poop: "拉屎",
   pee: "撒尿",
+};
+
+export const excretionAmountNames: Record<string, string> = {
+  less: "少",
+  more: "多",
 };
 
 // 妊娠期糖尿病诊断阈值(75g OGTT)

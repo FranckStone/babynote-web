@@ -3,7 +3,7 @@ import type { ExcretionRecord, FeedingRecord } from "../../shared/types";
 import { DateDisplay, formatFeedingAmount } from "../lib/display";
 import { feedingDurationMinutes } from "../lib/timeline";
 import { useData } from "../store";
-import { AmountPicker, IntervalHighlight, Segmented, feedingIntervalText } from "../components/widgets";
+import { AmountPicker, IntervalHighlight, Modal, Segmented, feedingIntervalText } from "../components/widgets";
 
 const FILTERS = [
   { key: "all", label: "全部" },
@@ -16,7 +16,7 @@ type FilterKey = (typeof FILTERS)[number]["key"];
 
 type DayRecord =
   | { kind: "feeding"; record: FeedingRecord; previousStartedAt: number | null; recordedAt: number }
-  | { kind: "excretion"; record: ExcretionRecord; recordedAt: number };
+  | { kind: "excretion"; record: ExcretionRecord; previousRecordedAt: number | null; recordedAt: number };
 
 export function QuickLogPage() {
   const { records, create, update, remove } = useData();
@@ -39,7 +39,6 @@ export function QuickLogPage() {
   }, [latestAmount]);
 
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [dayOffset, setDayOffset] = useState(0);
 
   // 行内奶量调整先缓存,0.45 秒无操作再落库
   const [pendingAmounts, setPendingAmounts] = useState<Record<number, number>>({});
@@ -64,7 +63,7 @@ export function QuickLogPage() {
     }, 450);
   };
 
-  const dayStart = DateDisplay.startOfDayOffset(dayOffset, now);
+  const dayStart = DateDisplay.startOfDay(now);
   const dayEnd = DateDisplay.nextDay(dayStart);
 
   const dayRecords = useMemo(() => {
@@ -81,10 +80,12 @@ export function QuickLogPage() {
       });
     });
 
-    for (const record of records.excretions) {
-      if (record.recordedAt < dayStart || record.recordedAt >= dayEnd) continue;
-      items.push({ kind: "excretion", record, recordedAt: record.recordedAt });
-    }
+    records.excretions.forEach((record, index) => {
+      if (record.recordedAt < dayStart || record.recordedAt >= dayEnd) return;
+      const previousRecordedAt =
+        records.excretions.slice(index + 1).find((candidate) => candidate.type === record.type)?.recordedAt ?? null;
+      items.push({ kind: "excretion", record, previousRecordedAt, recordedAt: record.recordedAt });
+    });
 
     return items
       .filter((item) => {
@@ -95,14 +96,6 @@ export function QuickLogPage() {
       })
       .sort((a, b) => b.recordedAt - a.recordedAt);
   }, [records, dayStart, dayEnd, filter]);
-
-  const dayLabel = (offset: number): string => {
-    if (offset === 0) return "今天";
-    if (offset === 1) return "昨天";
-    if (offset === 2) return "前天";
-    if (offset === 3) return "大前天";
-    return DateDisplay.shortDate(DateDisplay.startOfDayOffset(offset, now));
-  };
 
   // 3 小时内喂奶统计
   const threeHourStats = useMemo(() => {
@@ -136,7 +129,11 @@ export function QuickLogPage() {
       <section className="card quick-feeding-card">
         <h2 className="card-title">喂奶</h2>
 
-        <IntervalHighlight text={feedingIntervalText(previousFeedingStart, now)} />
+        <IntervalHighlight
+          key={previousFeedingStart ?? "no-feeding"}
+          text={feedingIntervalText(previousFeedingStart, now)}
+          progressMillis={previousFeedingStart == null ? 0 : Math.max(now - previousFeedingStart, 0) % 60_000}
+        />
 
         <div className="row" style={{ background: "var(--surface-variant)", borderRadius: 16, padding: 12 }}>
           <span style={{ fontSize: 22 }}>🍼</span>
@@ -187,7 +184,7 @@ export function QuickLogPage() {
             style={{ background: "rgb(141 110 99 / 16%)", color: "var(--brown)" }}
             onClick={() => create("excretion", { recordedAt: Date.now(), type: "poop", note: "" })}
           >
-            🚽 屎
+            💩 屎
           </button>
           <button
             type="button"
@@ -201,13 +198,7 @@ export function QuickLogPage() {
       </section>
 
       <section className="card quick-records-card">
-        <h2 className="card-title">{dayLabel(dayOffset)}记录</h2>
-
-        <Segmented
-          options={[0, 1, 2, 3, 4].map(dayLabel)}
-          selectedIndex={dayOffset}
-          onSelect={setDayOffset}
-        />
+        <h2 className="card-title">今天记录</h2>
         <Segmented
           options={FILTERS.map((item) => item.label)}
           selectedIndex={FILTERS.findIndex((item) => item.key === filter)}
@@ -218,17 +209,17 @@ export function QuickLogPage() {
           {dayRecords.length === 0 ? (
             <span className="muted small">
               {filter === "all"
-                ? `${dayLabel(dayOffset)}的喂奶、屎或尿记录会出现在这里。`
+                ? "今天的喂奶、屎或尿记录会出现在这里。"
                 : filter === "feeding"
-                  ? `${dayLabel(dayOffset)}还没有喂奶记录。`
+                  ? "今天还没有喂奶记录。"
                   : filter === "poop"
-                    ? `${dayLabel(dayOffset)}还没有屎记录。`
-                    : `${dayLabel(dayOffset)}还没有尿记录。`}
+                    ? "今天还没有屎记录。"
+                    : "今天还没有尿记录。"}
             </span>
           ) : (
             <>
               <span className="muted small semibold">
-                {dayLabel(dayOffset)} · 奶 {feedingItems.length} 次 · 共 {formatFeedingAmount(feedingTotal)} · 屎{" "}
+                今天 · 奶 {feedingItems.length} 次 · 共 {formatFeedingAmount(feedingTotal)} · 屎{" "}
                 {poopCount} 次 · 尿 {peeCount} 次
               </span>
 
@@ -238,14 +229,18 @@ export function QuickLogPage() {
                     key={`feeding-${item.record.id}`}
                     record={item.record}
                     previousStartedAt={item.previousStartedAt}
-                    displayedAmount={displayedAmount(item.record)}
-                    onAdjust={(delta) => adjustRecordAmount(item.record, delta)}
-                    onDelete={() => remove("feeding", item.record.id)}
+                  displayedAmount={displayedAmount(item.record)}
+                  onAdjust={(delta) => adjustRecordAmount(item.record, delta)}
+                  onTimeChange={(startedAt) => update("feeding", item.record.id, { startedAt })}
+                  onDelete={() => remove("feeding", item.record.id)}
                   />
                 ) : (
                   <ExcretionRow
                     key={`excretion-${item.record.id}`}
                     record={item.record}
+                    previousRecordedAt={item.previousRecordedAt}
+                    onTimeChange={(recordedAt) => update("excretion", item.record.id, { recordedAt })}
+                    onAmountChange={(amount) => update("excretion", item.record.id, { amount })}
                     onDelete={() => remove("excretion", item.record.id)}
                   />
                 ),
@@ -263,18 +258,17 @@ function FeedingRow({
   previousStartedAt,
   displayedAmount,
   onAdjust,
+  onTimeChange,
   onDelete,
 }: {
   record: FeedingRecord;
   previousStartedAt: number | null;
   displayedAmount: number | null;
   onAdjust: (delta: number) => void;
+  onTimeChange: (timeMillis: number) => void;
   onDelete: () => void;
 }) {
   const duration = feedingDurationMinutes(record);
-  const timing = [DateDisplay.time(record.startedAt), duration != null ? `${duration} 分` : null]
-    .filter(Boolean)
-    .join(" · ");
 
   return (
     <div className="list-row">
@@ -282,16 +276,17 @@ function FeedingRow({
         🍼
       </span>
       <div className="content">
-        <span className="semibold small">喂奶</span>
-        <span className="muted" style={{ fontSize: 12 }}>
-          {timing}
-        </span>
-        {previousStartedAt != null && (
-          <span className="muted" style={{ fontSize: 12 }}>
-            间隔 {DateDisplay.durationText(Math.floor((record.startedAt - previousStartedAt) / 1000))}
-          </span>
-        )}
+        <div className="record-time-row">
+          <RecordTimeInput timeMillis={record.startedAt} label="修改喂奶时间" onChange={onTimeChange} />
+          {duration != null && <span className="muted">· {duration} 分</span>}
+        </div>
       </div>
+
+      <span className={`record-row-interval ${previousStartedAt == null ? "empty" : ""}`}>
+        {previousStartedAt == null
+          ? "—"
+          : DateDisplay.compactDurationText((record.startedAt - previousStartedAt) / 1000)}
+      </span>
 
       <div className="inline-stepper">
         <button type="button" onClick={() => onAdjust(-10)} aria-label="减少奶量">
@@ -306,13 +301,24 @@ function FeedingRow({
       </div>
 
       <button type="button" className="delete-button" onClick={onDelete} aria-label="删除">
-        🗑
       </button>
     </div>
   );
 }
 
-function ExcretionRow({ record, onDelete }: { record: ExcretionRecord; onDelete: () => void }) {
+function ExcretionRow({
+  record,
+  previousRecordedAt,
+  onTimeChange,
+  onAmountChange,
+  onDelete,
+}: {
+  record: ExcretionRecord;
+  previousRecordedAt: number | null;
+  onTimeChange: (timeMillis: number) => void;
+  onAmountChange: (amount: "less" | "more") => void;
+  onDelete: () => void;
+}) {
   const isPoop = record.type === "poop";
   return (
     <div className="list-row">
@@ -320,17 +326,123 @@ function ExcretionRow({ record, onDelete }: { record: ExcretionRecord; onDelete:
         className="icon-badge"
         style={{ background: isPoop ? "rgb(141 110 99 / 14%)" : "rgb(249 168 37 / 14%)" }}
       >
-        {isPoop ? "🚽" : "💧"}
+        {isPoop ? "💩" : "💧"}
       </span>
       <div className="content">
-        <span className="semibold small">{isPoop ? "拉屎" : "撒尿"}</span>
-        <span className="muted" style={{ fontSize: 12 }}>
-          {DateDisplay.time(record.recordedAt)}
-        </span>
+        <div className="record-time-row">
+          <RecordTimeInput timeMillis={record.recordedAt} label="修改屎尿时间" onChange={onTimeChange} />
+        </div>
+      </div>
+      <span className={`record-row-interval ${previousRecordedAt == null ? "empty" : ""}`}>
+        {previousRecordedAt == null
+          ? "—"
+          : DateDisplay.compactDurationText((record.recordedAt - previousRecordedAt) / 1000)}
+      </span>
+      <div className="excretion-amount-toggle" aria-label="屎尿量">
+        <button
+          type="button"
+          className={record.amount === "less" ? "active" : ""}
+          onClick={() => onAmountChange("less")}
+        >
+          少
+        </button>
+        <button
+          type="button"
+          className={record.amount === "more" ? "active" : ""}
+          onClick={() => onAmountChange("more")}
+        >
+          多
+        </button>
       </div>
       <button type="button" className="delete-button" onClick={onDelete} aria-label="删除">
-        🗑
       </button>
     </div>
+  );
+}
+
+function RecordTimeInput({
+  timeMillis,
+  label,
+  onChange,
+}: {
+  timeMillis: number;
+  label: string;
+  onChange: (timeMillis: number) => void;
+}) {
+  const sourceDate = new Date(timeMillis);
+  const [isOpen, setIsOpen] = useState(false);
+  const [hours, setHours] = useState(sourceDate.getHours());
+  const [minutes, setMinutes] = useState(sourceDate.getMinutes());
+
+  const openPicker = () => {
+    const current = new Date(timeMillis);
+    setHours(current.getHours());
+    setMinutes(current.getMinutes());
+    setIsOpen(true);
+  };
+
+  return (
+    <>
+      <button type="button" className="record-time-button" aria-label={label} onClick={openPicker}>
+        🕐 {DateDisplay.clockTime(timeMillis)}
+      </button>
+
+      {isOpen && (
+        <Modal
+          title="修改记录时间"
+          onDismiss={() => setIsOpen(false)}
+          onSave={() => {
+            const next = new Date(timeMillis);
+            next.setHours(hours, minutes, 0, 0);
+            onChange(next.getTime());
+            setIsOpen(false);
+          }}
+        >
+          <div className="time-picker-value">
+            {`${hours}`.padStart(2, "0")}:{`${minutes}`.padStart(2, "0")}
+          </div>
+
+          <div className="time-picker-sliders">
+            <div className="time-slider-group">
+              <span className="field-label">时</span>
+              <div className="time-stepper-row">
+                <button type="button" onClick={() => setHours((hours + 23) % 24)} aria-label="小时减一">−</button>
+                <strong>{`${hours}`.padStart(2, "0")} 时</strong>
+                <button type="button" onClick={() => setHours((hours + 1) % 24)} aria-label="小时加一">＋</button>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={23}
+                step={1}
+                value={hours}
+                aria-label="小时滑块"
+                onChange={(event) => setHours(Number(event.target.value))}
+              />
+              <span className="time-slider-scale"><span>0 时</span><span>12 时</span><span>23 时</span></span>
+            </div>
+
+            <div className="time-slider-group">
+              <span className="field-label">分钟</span>
+              <div className="time-stepper-row">
+                <button type="button" onClick={() => setMinutes((minutes + 59) % 60)} aria-label="分钟减一">−</button>
+                <strong>{`${minutes}`.padStart(2, "0")} 分</strong>
+                <button type="button" onClick={() => setMinutes((minutes + 1) % 60)} aria-label="分钟加一">＋</button>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={59}
+                step={1}
+                value={minutes}
+                aria-label="分钟滑块"
+                onChange={(event) => setMinutes(Number(event.target.value))}
+              />
+              <span className="time-slider-scale"><span>0 分</span><span>30 分</span><span>59 分</span></span>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
