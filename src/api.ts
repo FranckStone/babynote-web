@@ -1,4 +1,4 @@
-import type { AllRecords, RecordKind } from "../shared/types";
+import type { AllRecords, RecordKind, TrashItem, SessionInfo, ShareKey, CreateShareKey } from "../shared/types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -6,6 +6,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (response.status === 401) {
+    if (!["/api/login", "/api/share-login", "/api/me"].includes(path)) {
+      window.dispatchEvent(new Event("babynote-session-expired"));
+    }
     throw new UnauthorizedError();
   }
   if (!response.ok) {
@@ -23,11 +26,19 @@ export class UnauthorizedError extends Error {
 
 export const api = {
   login: (password: string) =>
-    request<{ ok: true }>("/api/login", { method: "POST", body: JSON.stringify({ password }) }),
+    request<SessionInfo>("/api/login", { method: "POST", body: JSON.stringify({ password }) }),
 
   logout: () => request<{ ok: true }>("/api/logout", { method: "POST" }),
 
-  me: () => request<{ ok: true }>("/api/me"),
+  fetchShareKeys: () => request<ShareKey[]>("/api/share-links"),
+
+  createShareKey: (payload: CreateShareKey) => request<ShareKey>("/api/share-links", { method: "POST", body: JSON.stringify(payload) }),
+
+  setShareKeyDisabled: (id: string, disabled: boolean) => request<ShareKey>(`/api/share-links/${id}`, { method: "PATCH", body: JSON.stringify({ disabled }) }),
+
+  loginWithShare: (token: string) => request<SessionInfo>("/api/share-login", { method: "POST", body: JSON.stringify({ token }) }),
+
+  me: () => request<SessionInfo>("/api/me"),
 
   fetchRecords: () => request<AllRecords>("/api/records"),
 
@@ -39,4 +50,12 @@ export const api = {
 
   remove: (kind: RecordKind, id: number) =>
     request<{ ok: true }>(`/api/${kind}/${id}`, { method: "DELETE" }),
+
+  fetchTrash: () => request<TrashItem[]>("/api/trash"),
+
+  restoreTrash: (kind: RecordKind, id: number) =>
+    request<{ ok: true }>(`/api/trash/${kind}/${id}/restore`, { method: "POST" }),
+
+  permanentlyDeleteTrash: (kind: RecordKind, id: number) =>
+    request<{ ok: true }>(`/api/trash/${kind}/${id}`, { method: "DELETE" }),
 };

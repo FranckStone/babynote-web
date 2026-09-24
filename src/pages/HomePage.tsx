@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { EmptyState, SummaryCard } from "../components/widgets";
 import { DateDisplay, WeightDisplay, bloodGlucoseMomentNames, excretionTypeNames, format1 } from "../lib/display";
 import { buildRecentTimeline, recordKindMeta } from "../lib/timeline";
@@ -72,15 +73,18 @@ export function HomePage() {
       <section className="home-recent" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 className="card-title">最近记录</h2>
         {recentItems.length === 0 ? (
-          <EmptyState emoji="📥" text="还没有记录" description="先从一次快速记录开始。" />
+          <EmptyState icon="inbox" text="还没有记录" description="先从一次快速记录开始。" />
         ) : (
           recentItems.map((item) => (
             <div key={item.id} className="card" style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
               <span
                 className="icon-badge"
-                style={{ background: `color-mix(in srgb, ${recordKindMeta[item.kind].tint} 14%, transparent)` }}
+                style={{
+                  background: `color-mix(in srgb, ${recordKindMeta[item.kind].tint} 14%, transparent)`,
+                  color: recordKindMeta[item.kind].tint,
+                }}
               >
-                {recordKindMeta[item.kind].emoji}
+                <Icon name={recordKindMeta[item.kind].icon} />
               </span>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                 <span className="semibold">{item.title}</span>

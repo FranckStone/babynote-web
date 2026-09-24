@@ -58,7 +58,7 @@ export function RecordEditorModal({ item, onDismiss }: { item: TimelineItem; onD
           }}
           saveLabel="删除"
         >
-          <span className="muted small">删除后无法恢复。</span>
+          <span className="muted small">删除后会移入回收站，可在设置中恢复。</span>
         </Modal>
       )}
     </>

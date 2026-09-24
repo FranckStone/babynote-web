@@ -1,3 +1,6 @@
+import { DeleteRecordButton } from "../components/DeleteRecordButton";
+import { AnimatedList } from "../components/AnimatedList";
+import { Icon, type IconName } from "../components/Icon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExcretionRecord, FeedingRecord } from "../../shared/types";
 import { DateDisplay, formatFeedingAmount } from "../lib/display";
@@ -13,6 +16,8 @@ const FILTERS = [
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]["key"];
+type QuickAction = "feeding" | "poop" | "pee";
+type QuickActionStatus = "idle" | "saving" | "success" | "error";
 
 type DayRecord =
   | { kind: "feeding"; record: FeedingRecord; previousStartedAt: number | null; recordedAt: number }
@@ -39,6 +44,52 @@ export function QuickLogPage() {
   }, [latestAmount]);
 
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [quickActionStatus, setQuickActionStatus] = useState<Record<QuickAction, QuickActionStatus>>({
+    feeding: "idle",
+    poop: "idle",
+    pee: "idle",
+  });
+  const quickActionTimers = useRef<Partial<Record<QuickAction, number>>>({});
+  const lockedQuickActions = useRef<Set<QuickAction>>(new Set());
+
+  useEffect(
+    () => () => {
+      Object.values(quickActionTimers.current).forEach((timer) => window.clearTimeout(timer));
+    },
+    [],
+  );
+
+  const runQuickAction = async (action: QuickAction, save: () => Promise<void>) => {
+    if (lockedQuickActions.current.has(action)) return;
+
+    lockedQuickActions.current.add(action);
+    window.clearTimeout(quickActionTimers.current[action]);
+    setQuickActionStatus((previous) => ({ ...previous, [action]: "saving" }));
+
+    try {
+      await save();
+      setQuickActionStatus((previous) => ({ ...previous, [action]: "success" }));
+      if ("vibrate" in navigator) navigator.vibrate(24);
+      quickActionTimers.current[action] = window.setTimeout(() => {
+        lockedQuickActions.current.delete(action);
+        setQuickActionStatus((previous) => ({ ...previous, [action]: "idle" }));
+      }, 900);
+    } catch {
+      lockedQuickActions.current.delete(action);
+      setQuickActionStatus((previous) => ({ ...previous, [action]: "error" }));
+      quickActionTimers.current[action] = window.setTimeout(() => {
+        setQuickActionStatus((previous) => ({ ...previous, [action]: "idle" }));
+      }, 1800);
+    }
+  };
+
+  const quickActionContent = (action: QuickAction, icon: IconName, label: string) => {
+    const status = quickActionStatus[action];
+    if (status === "saving") return <><span className="quick-action-spinner" aria-hidden="true" />记录中…</>;
+    if (status === "success") return <><Icon name="check" size="1em" strokeWidth={2.4} />已记录</>;
+    if (status === "error") return <><Icon name="alert" size="1em" strokeWidth={2.2} />失败，请重试</>;
+    return <><Icon name={icon} size="1em" strokeWidth={2.2} />{label}</>;
+  };
 
   // 行内奶量调整先缓存,0.45 秒无操作再落库
   const [pendingAmounts, setPendingAmounts] = useState<Record<number, number>>({});
@@ -130,13 +181,12 @@ export function QuickLogPage() {
         <h2 className="card-title">喂奶</h2>
 
         <IntervalHighlight
-          key={previousFeedingStart ?? "no-feeding"}
           text={feedingIntervalText(previousFeedingStart, now)}
           progressMillis={previousFeedingStart == null ? 0 : Math.max(now - previousFeedingStart, 0) % 60_000}
         />
 
         <div className="row" style={{ background: "var(--surface-variant)", borderRadius: 16, padding: 12 }}>
-          <span style={{ fontSize: 22 }}>🍼</span>
+          <Icon name="bottle" size={22} style={{ color: "var(--pink)" }} />
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="muted small semibold">3小时内喂奶量</span>
             <div className="row">
@@ -159,19 +209,20 @@ export function QuickLogPage() {
 
         <button
           type="button"
-          className="primary-button"
-          style={{ background: "rgb(233 30 99 / 16%)", color: "var(--pink)" }}
-          disabled={!hasAmount}
+          className={`primary-button quick-action-button feeding ${quickActionStatus.feeding}`}
+          disabled={!hasAmount || quickActionStatus.feeding === "saving" || quickActionStatus.feeding === "success"}
+          aria-busy={quickActionStatus.feeding === "saving"}
+          aria-live="polite"
           onClick={() =>
-            create("feeding", {
+            runQuickAction("feeding", () => create("feeding", {
               startedAt: Date.now(),
               feedingType: "formula",
               amountML: Number(amountText.trim()),
               note: "",
-            })
+            }))
           }
         >
-          ➕ 喂奶
+          {quickActionContent("feeding", "plus", "喂奶")}
         </button>
       </section>
 
@@ -180,19 +231,31 @@ export function QuickLogPage() {
         <div className="row">
           <button
             type="button"
-            className="primary-button"
-            style={{ background: "rgb(141 110 99 / 16%)", color: "var(--brown)" }}
-            onClick={() => create("excretion", { recordedAt: Date.now(), type: "poop", note: "" })}
+            className={`primary-button quick-action-button poop ${quickActionStatus.poop}`}
+            disabled={quickActionStatus.poop === "saving" || quickActionStatus.poop === "success"}
+            aria-busy={quickActionStatus.poop === "saving"}
+            aria-live="polite"
+            onClick={() =>
+              runQuickAction("poop", () =>
+                create("excretion", { recordedAt: Date.now(), type: "poop", note: "" }),
+              )
+            }
           >
-            💩 屎
+            {quickActionContent("poop", "poop", "屎")}
           </button>
           <button
             type="button"
-            className="primary-button"
-            style={{ background: "rgb(249 168 37 / 16%)", color: "var(--yellow)" }}
-            onClick={() => create("excretion", { recordedAt: Date.now(), type: "pee", note: "" })}
+            className={`primary-button quick-action-button pee ${quickActionStatus.pee}`}
+            disabled={quickActionStatus.pee === "saving" || quickActionStatus.pee === "success"}
+            aria-busy={quickActionStatus.pee === "saving"}
+            aria-live="polite"
+            onClick={() =>
+              runQuickAction("pee", () =>
+                create("excretion", { recordedAt: Date.now(), type: "pee", note: "" }),
+              )
+            }
           >
-            💧 尿
+            {quickActionContent("pee", "droplets", "尿")}
           </button>
         </div>
       </section>
@@ -206,7 +269,13 @@ export function QuickLogPage() {
         />
 
         <div className="quick-records-scroll">
-          {dayRecords.length === 0 ? (
+          {dayRecords.length > 0 && (
+              <span className="muted small semibold">
+                今天 · 奶 {feedingItems.length} 次 · 共 {formatFeedingAmount(feedingTotal)} · 屎{" "}
+                {poopCount} 次 · 尿 {peeCount} 次
+              </span>
+          )}
+          <AnimatedList key={`${dayStart}-${filter}`} emptyState={(
             <span className="muted small">
               {filter === "all"
                 ? "今天的喂奶、屎或尿记录会出现在这里。"
@@ -216,37 +285,30 @@ export function QuickLogPage() {
                     ? "今天还没有屎记录。"
                     : "今天还没有尿记录。"}
             </span>
-          ) : (
-            <>
-              <span className="muted small semibold">
-                今天 · 奶 {feedingItems.length} 次 · 共 {formatFeedingAmount(feedingTotal)} · 屎{" "}
-                {poopCount} 次 · 尿 {peeCount} 次
-              </span>
-
-              {dayRecords.map((item) =>
-                item.kind === "feeding" ? (
-                  <FeedingRow
-                    key={`feeding-${item.record.id}`}
-                    record={item.record}
-                    previousStartedAt={item.previousStartedAt}
+          )}>
+            {dayRecords.map((item) =>
+              item.kind === "feeding" ? (
+                <FeedingRow
+                  key={`feeding-${item.record.id}`}
+                  record={item.record}
+                  previousStartedAt={item.previousStartedAt}
                   displayedAmount={displayedAmount(item.record)}
                   onAdjust={(delta) => adjustRecordAmount(item.record, delta)}
                   onTimeChange={(startedAt) => update("feeding", item.record.id, { startedAt })}
                   onDelete={() => remove("feeding", item.record.id)}
-                  />
-                ) : (
-                  <ExcretionRow
-                    key={`excretion-${item.record.id}`}
-                    record={item.record}
-                    previousRecordedAt={item.previousRecordedAt}
-                    onTimeChange={(recordedAt) => update("excretion", item.record.id, { recordedAt })}
-                    onAmountChange={(amount) => update("excretion", item.record.id, { amount })}
-                    onDelete={() => remove("excretion", item.record.id)}
-                  />
-                ),
-              )}
-            </>
-          )}
+                />
+              ) : (
+                <ExcretionRow
+                  key={`excretion-${item.record.id}`}
+                  record={item.record}
+                  previousRecordedAt={item.previousRecordedAt}
+                  onTimeChange={(recordedAt) => update("excretion", item.record.id, { recordedAt })}
+                  onAmountChange={(amount) => update("excretion", item.record.id, { amount })}
+                  onDelete={() => remove("excretion", item.record.id)}
+                />
+              ),
+            )}
+          </AnimatedList>
         </div>
       </section>
     </div>
@@ -266,14 +328,14 @@ function FeedingRow({
   displayedAmount: number | null;
   onAdjust: (delta: number) => void;
   onTimeChange: (timeMillis: number) => void;
-  onDelete: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const duration = feedingDurationMinutes(record);
 
   return (
     <div className="list-row">
-      <span className="icon-badge" style={{ background: "rgb(30 136 229 / 14%)" }}>
-        🍼
+      <span className="icon-badge" style={{ background: "rgb(30 136 229 / 14%)", color: "var(--blue)" }}>
+        <Icon name="bottle" />
       </span>
       <div className="content">
         <div className="record-time-row">
@@ -300,8 +362,7 @@ function FeedingRow({
         </button>
       </div>
 
-      <button type="button" className="delete-button" onClick={onDelete} aria-label="删除">
-      </button>
+      <DeleteRecordButton onDelete={onDelete} />
     </div>
   );
 }
@@ -317,16 +378,19 @@ function ExcretionRow({
   previousRecordedAt: number | null;
   onTimeChange: (timeMillis: number) => void;
   onAmountChange: (amount: "less" | "more") => void;
-  onDelete: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const isPoop = record.type === "poop";
   return (
     <div className="list-row">
       <span
         className="icon-badge"
-        style={{ background: isPoop ? "rgb(141 110 99 / 14%)" : "rgb(249 168 37 / 14%)" }}
+        style={{
+          background: isPoop ? "rgb(141 110 99 / 14%)" : "rgb(249 168 37 / 14%)",
+          color: isPoop ? "var(--brown)" : "var(--yellow)",
+        }}
       >
-        {isPoop ? "💩" : "💧"}
+        <Icon name={isPoop ? "poop" : "droplets"} />
       </span>
       <div className="content">
         <div className="record-time-row">
@@ -354,8 +418,7 @@ function ExcretionRow({
           多
         </button>
       </div>
-      <button type="button" className="delete-button" onClick={onDelete} aria-label="删除">
-      </button>
+      <DeleteRecordButton onDelete={onDelete} />
     </div>
   );
 }
@@ -384,7 +447,8 @@ function RecordTimeInput({
   return (
     <>
       <button type="button" className="record-time-button" aria-label={label} onClick={openPicker}>
-        🕐 {DateDisplay.clockTime(timeMillis)}
+        <Icon name="clock" size={13} strokeWidth={2} />
+        {DateDisplay.clockTime(timeMillis)}
       </button>
 
       {isOpen && (

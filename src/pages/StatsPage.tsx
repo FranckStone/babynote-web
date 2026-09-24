@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BloodGlucoseRecord, FeedingRecord } from "../../shared/types";
+import { Icon } from "../components/Icon";
 import { EmptyState, SummaryCard } from "../components/widgets";
 import {
   DateDisplay,
@@ -54,7 +55,8 @@ export function StatsPage() {
   return (
     <div className="page stats-detail-page">
       <button type="button" className="back-button" onClick={() => navigate("overview")}>
-        ← 返回统计
+        <Icon name="arrowLeft" size={18} strokeWidth={2} />
+        返回统计
       </button>
       <h1 className="page-title" style={{ marginTop: 0 }}>
         {titles[destination]}
@@ -186,7 +188,7 @@ function FeedingStats() {
   }, [records.feedings]);
 
   if (dailyGroups.length === 0) {
-    return <EmptyState emoji="🍼" text="暂无喂奶数据" />;
+    return <EmptyState icon="bottle" text="暂无喂奶数据" />;
   }
 
   return (
@@ -370,7 +372,7 @@ function WeightStats() {
       </section>
 
       {points.length === 0 ? (
-        <EmptyState emoji="📈" text="请选择日期查看体重趋势" />
+        <EmptyState icon="chart" text="请选择日期查看体重趋势" />
       ) : (
         <section className="card">
           <WeightLineChart points={points} />
@@ -490,7 +492,7 @@ function ExcretionStats() {
   const total = totalPoop + totalPee;
 
   if (dailyGroups.length === 0) {
-    return <EmptyState emoji="🚽" text="暂无屎尿数据" />;
+    return <EmptyState icon="poop" text="暂无屎尿数据" />;
   }
 
   return (
@@ -591,7 +593,7 @@ function BloodGlucoseStats() {
   }, [records.bloodGlucoses, daysDesc]);
 
   if (chartPoints.length === 0) {
-    return <EmptyState emoji="🩸" text="暂无血糖数据" />;
+    return <EmptyState icon="bloodDrop" text="暂无血糖数据" />;
   }
 
   const average =

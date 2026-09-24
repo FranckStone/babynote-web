@@ -1,3 +1,6 @@
+import { DeleteRecordButton } from "../components/DeleteRecordButton";
+import { AnimatedList } from "../components/AnimatedList";
+import { Icon, type IconName } from "../components/Icon";
 import { useMemo, useRef, useState } from "react";
 import type { RecordKind } from "../../shared/types";
 import { RecordEditorModal } from "../components/RecordEditor";
@@ -5,6 +8,7 @@ import { EmptyState } from "../components/widgets";
 import { DateDisplay, excretionAmountNames, formatFeedingAmount } from "../lib/display";
 import { buildTimeline, recordKindMeta, recordKinds, type TimelineItem } from "../lib/timeline";
 import { useData } from "../store";
+import { useAccess } from "../auth";
 
 const ALL_FILTERS: Array<{ kind: RecordKind | null; label: string }> = [
   { kind: null, label: "全部" },
@@ -34,6 +38,7 @@ function dayTitle(timeMillis: number): string {
 }
 
 export function TimelinePage() {
+  const { canWrite } = useAccess();
   const { records, remove } = useData();
   const [selectedKind, setSelectedKind] = useState<RecordKind | null>(null);
   const [selectedDay, setSelectedDay] = useState(() => DateDisplay.startOfDay(Date.now()));
@@ -93,11 +98,12 @@ export function TimelinePage() {
   return (
     <div className="page timeline-page">
       <h1 className="page-title">时间线</h1>
+      {!canWrite && <p className="muted small">当前为只读访问，可查看和筛选记录。</p>}
 
       <section className="card timeline-records-card">
         <div className="timeline-date-header">
           <button type="button" className="timeline-day-button" onClick={() => moveDay(-1)} aria-label="前一天">
-            ‹
+            <Icon name="chevronLeft" size={22} strokeWidth={2.2} />
           </button>
           <div className="timeline-date-picker">
             <button
@@ -128,7 +134,7 @@ export function TimelinePage() {
             />
           </div>
           <button type="button" className="timeline-day-button" onClick={() => moveDay(1)} aria-label="后一天">
-            ›
+            <Icon name="chevronRight" size={22} strokeWidth={2.2} />
           </button>
           {!DateDisplay.isToday(selectedDay) && (
             <button type="button" className="timeline-today-button" onClick={() => setSelectedDay(DateDisplay.startOfDay(Date.now()))}>
@@ -172,17 +178,19 @@ export function TimelinePage() {
         </div>
 
         <div className="quick-records-scroll timeline-records-scroll">
-          {visibleItems.length === 0 ? (
-            <EmptyState emoji="📅" text={`${dayTitle(selectedDay)}没有${selectedKind ? recordKindMeta[selectedKind].name : ""}记录`} />
-          ) : (
-            visibleItems.map((item) => {
+          <AnimatedList key={`${selectedDay}-${selectedKind}`} emptyState={(
+            <EmptyState icon="calendar" text={`${dayTitle(selectedDay)}没有${selectedKind ? recordKindMeta[selectedKind].name : ""}记录`} />
+          )}>
+            {visibleItems.map((item) => {
               const meta = recordKindMeta[item.kind];
-              const rowEmoji =
+              const rowIcon: IconName =
                 item.record.kind === "excretion"
                   ? item.record.record.type === "poop"
-                    ? "💩"
-                    : "💧"
-                  : meta.emoji;
+                    ? "poop"
+                    : "droplets"
+                  : meta.icon;
+              const rowTint =
+                item.record.kind === "excretion" && item.record.record.type === "pee" ? "var(--yellow)" : meta.tint;
               const interval = intervalFor(item);
               const primaryValue = primaryValueFor(item);
               const isIntervalRecord = item.kind === "feeding" || item.kind === "excretion";
@@ -191,9 +199,9 @@ export function TimelinePage() {
                 <div key={item.id} className="list-row timeline-record-row">
                   <span
                     className="icon-badge"
-                    style={{ background: `color-mix(in srgb, ${meta.tint} 14%, transparent)` }}
+                    style={{ background: `color-mix(in srgb, ${rowTint} 14%, transparent)`, color: rowTint }}
                   >
-                    {rowEmoji}
+                    <Icon name={rowIcon} />
                   </span>
                   <div className="timeline-record-main">
                     <span className="content">
@@ -212,24 +220,19 @@ export function TimelinePage() {
                     <span className={`timeline-record-secondary ${interval ? "is-interval" : ""}`}>
                       {secondaryText}
                     </span>
-                    <button type="button" className="timeline-edit-button" onClick={() => setEditingItem(item)}>
-                      编辑 ›
-                    </button>
+                    {canWrite && <button type="button" className="timeline-edit-button" onClick={() => setEditingItem(item)}>
+                      编辑 <Icon name="chevronRight" size={14} strokeWidth={2.2} />
+                    </button>}
                   </div>
-                  <button
-                    type="button"
-                    className="delete-button"
-                    aria-label="删除"
-                    onClick={() => remove(item.kind, item.record.record.id)}
-                  />
+                  {canWrite && <DeleteRecordButton onDelete={() => remove(item.kind, item.record.record.id)} />}
                 </div>
               );
-            })
-          )}
+            })}
+          </AnimatedList>
         </div>
       </section>
 
-      {editingItem && <RecordEditorModal item={editingItem} onDismiss={() => setEditingItem(null)} />}
+      {canWrite && editingItem && <RecordEditorModal item={editingItem} onDismiss={() => setEditingItem(null)} />}
     </div>
   );
 }

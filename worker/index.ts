@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { DurableObject } from "cloudflare:workers";
+import { createShareToken, verifyShareToken, createShareSession, verifyShareSession, isShareKeyActive, newShareKeyId, type ShareKeyRow } from "./share";
+import type { SessionInfo, ShareKey } from "../shared/types";
 
 type Bindings = {
   DB: D1Database;
@@ -10,6 +12,12 @@ type Bindings = {
 };
 
 export class RealtimeHub extends DurableObject<Bindings> {
+  constructor(ctx: DurableObjectState, env: Bindings) {
+    super(ctx, env);
+    // 客户端心跳由运行时自动应答，不唤醒休眠中的 DO。
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
@@ -40,7 +48,7 @@ export class RealtimeHub extends DurableObject<Bindings> {
   }
 }
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { session: SessionInfo } }>();
 
 // ---------- 鉴权:密码登录 + HMAC 签名 cookie ----------
 
@@ -80,7 +88,7 @@ async function makeToken(secret: string): Promise<string> {
 }
 
 async function verifyToken(secret: string, token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+  if (!token || !/^\d{13}\.[A-Za-z0-9_-]{43}$/.test(token)) return false;
   const [expiresAtText, signature] = token.split(".");
   if (!expiresAtText || !signature) return false;
   const expiresAt = Number(expiresAtText);
@@ -95,7 +103,20 @@ app.post("/api/login", async (c) => {
   }
 
   setCookie(c, COOKIE_NAME, await makeToken(c.env.AUTH_SECRET), sessionCookieOptions());
-  return c.json({ ok: true });
+  return c.json({ permission: "owner" } satisfies SessionInfo);
+});
+
+app.post("/api/share-login", async (c) => {
+  const body = await c.req.json<{ token?: unknown }>().catch(() => null);
+  c.header("Cache-Control", "no-store");
+  const id = await verifyShareToken(c.env.AUTH_SECRET, body?.token);
+  const key = id ? await c.env.DB.prepare("SELECT * FROM share_keys WHERE id = ?").bind(id).first<ShareKeyRow>() : null;
+  if (!isShareKeyActive(key)) {
+    return c.json({ error: "分享 Key 无效、已停用或已过期" }, 401);
+  }
+  await c.env.DB.prepare("UPDATE share_keys SET last_used_at = ? WHERE id = ?").bind(Date.now(), key.id).run();
+  setCookie(c, COOKIE_NAME, await createShareSession(c.env.AUTH_SECRET, key.id), sessionCookieOptions());
+  return c.json({ permission: key.permission, shareName: key.name } satisfies SessionInfo);
 });
 
 app.post("/api/logout", (c) => {
@@ -104,17 +125,72 @@ app.post("/api/logout", (c) => {
 });
 
 app.use("/api/*", async (c, next) => {
-  if (c.req.path === "/api/login") return next();
-  const isValid = await verifyToken(c.env.AUTH_SECRET, getCookie(c, COOKIE_NAME));
-  if (!isValid) {
-    return c.json({ error: "未登录" }, 401);
+  c.header("Cache-Control", "no-store");
+  const token = getCookie(c, COOKIE_NAME);
+  if (await verifyToken(c.env.AUTH_SECRET, token)) {
+    c.set("session", { permission: "owner" });
+    setCookie(c, COOKIE_NAME, await makeToken(c.env.AUTH_SECRET), sessionCookieOptions());
+  } else {
+    const id = await verifyShareSession(c.env.AUTH_SECRET, token);
+    const key = id ? await c.env.DB.prepare("SELECT * FROM share_keys WHERE id = ?").bind(id).first<ShareKeyRow>() : null;
+    if (!isShareKeyActive(key)) return c.json({ error: "登录已失效，请重新登录" }, 401);
+    c.set("session", { permission: key.permission, shareName: key.name });
+    // Never convert a share visitor into an owner session. Check the Key on every request.
+    setCookie(c, COOKIE_NAME, await createShareSession(c.env.AUTH_SECRET, key.id), sessionCookieOptions());
   }
-  // 滑动续期：只要继续使用，就始终保持登录。
-  setCookie(c, COOKIE_NAME, await makeToken(c.env.AUTH_SECRET), sessionCookieOptions());
+  const permission = c.get("session").permission;
+  const managesKeys = c.req.path === "/api/share-links" || c.req.path.startsWith("/api/share-links/");
+  if (managesKeys && permission !== "owner") return c.json({ error: "仅密码登录的管理员可管理分享 Key" }, 403);
+  if (permission === "read" && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
+    return c.json({ error: "当前分享 Key 为只读，不能修改记录" }, 403);
+  }
   return next();
 });
 
-app.get("/api/me", (c) => c.json({ ok: true }));
+app.get("/api/me", (c) => c.json(c.get("session")));
+
+async function shareKeyJson(secret: string, row: ShareKeyRow): Promise<ShareKey> {
+  return {
+    id: row.id, name: row.name, permission: row.permission,
+    createdAt: row.created_at, expiresAt: row.expires_at,
+    disabledAt: row.disabled_at, lastUsedAt: row.last_used_at,
+    token: await createShareToken(secret, row.id),
+  };
+}
+
+app.get("/api/share-links", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT * FROM share_keys ORDER BY created_at DESC, id DESC").all<ShareKeyRow>();
+  return c.json(await Promise.all(results.map((row) => shareKeyJson(c.env.AUTH_SECRET, row))));
+});
+
+app.post("/api/share-links", async (c) => {
+  const body = await c.req.json<{ name?: unknown; permission?: unknown; durationDays?: unknown }>().catch(() => null);
+  if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 50 ||
+      (body.permission !== "read" && body.permission !== "write") || ![null, 1, 7, 30].includes(body.durationDays as number | null)) {
+    return c.json({ error: "请填写 1–50 字的名称，并选择权限和有效期" }, 400);
+  }
+  const now = Date.now();
+  const row: ShareKeyRow = {
+    id: newShareKeyId(), name: body.name.trim(), permission: body.permission as "read" | "write",
+    created_at: now, expires_at: body.durationDays === null ? null : now + Number(body.durationDays) * 86400000,
+    disabled_at: null, last_used_at: null,
+  };
+  await c.env.DB.prepare("INSERT INTO share_keys (id, name, permission, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(row.id, row.name, row.permission, row.created_at, row.expires_at).run();
+  return c.json(await shareKeyJson(c.env.AUTH_SECRET, row), 201);
+});
+
+app.patch("/api/share-links/:id", async (c) => {
+  const body = await c.req.json<{ disabled?: unknown }>().catch(() => null);
+  if (typeof body?.disabled !== "boolean") return c.json({ error: "请选择启用或停用" }, 400);
+  const id = c.req.param("id");
+  const result = await c.env.DB.prepare("UPDATE share_keys SET disabled_at = ? WHERE id = ?")
+    .bind(body.disabled ? Date.now() : null, id).run();
+  if (!result.meta.changes) return c.json({ error: "分享 Key 不存在" }, 404);
+  const row = await c.env.DB.prepare("SELECT * FROM share_keys WHERE id = ?").bind(id).first<ShareKeyRow>();
+  await broadcastRecordsChanged(c.env);
+  return c.json(await shareKeyJson(c.env.AUTH_SECRET, row!));
+});
 
 app.get("/api/events", async (c) => {
   const hub = c.env.REALTIME.getByName("records");
@@ -210,7 +286,7 @@ function rowToJson(config: TableConfig, row: Record<string, unknown>): Record<st
 
 async function listAll(db: D1Database, config: TableConfig) {
   const { results } = await db
-    .prepare(`SELECT * FROM ${config.table} ORDER BY ${config.orderBy} DESC`)
+    .prepare(`SELECT * FROM ${config.table} WHERE deleted_at IS NULL ORDER BY ${config.orderBy} DESC`)
     .all();
   return results.map((row) => rowToJson(config, row as Record<string, unknown>));
 }
@@ -229,6 +305,26 @@ app.get("/api/records", async (c) => {
     ]);
 
   return c.json({ feedings, weights, medications, checkups, fetalMovements, bloodGlucoses, excretions });
+});
+
+app.get("/api/trash", async (c) => {
+  const groups = await Promise.all(
+    Object.entries(TABLES).map(async ([kind, config]) => {
+      const { results } = await c.env.DB
+        .prepare(`SELECT * FROM ${config.table} WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`)
+        .all();
+      return results.map((rawRow) => {
+        const row = rawRow as Record<string, unknown>;
+        return {
+          kind,
+          deletedAt: Number(row.deleted_at),
+          record: rowToJson(config, row),
+        };
+      });
+    }),
+  );
+
+  return c.json(groups.flat().sort((a, b) => b.deletedAt - a.deletedAt));
 });
 
 app.post("/api/:kind", async (c) => {
@@ -279,12 +375,15 @@ app.put("/api/:kind/:id", async (c) => {
   const values = updates.map((key) => body[key]);
 
   const result = await c.env.DB
-    .prepare(`UPDATE ${config.table} SET ${assignments} WHERE id = ?`)
+    .prepare(`UPDATE ${config.table} SET ${assignments} WHERE id = ? AND deleted_at IS NULL`)
     .bind(...values, id)
     .run();
   if (result.meta.changes === 0) return c.json({ error: "记录不存在" }, 404);
 
-  const row = await c.env.DB.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).bind(id).first();
+  const row = await c.env.DB
+    .prepare(`SELECT * FROM ${config.table} WHERE id = ? AND deleted_at IS NULL`)
+    .bind(id)
+    .first();
   await broadcastRecordsChanged(c.env);
   return c.json(rowToJson(config, row as Record<string, unknown>));
 });
@@ -295,8 +394,41 @@ app.delete("/api/:kind/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "无效的 id" }, 400);
 
-  const result = await c.env.DB.prepare(`DELETE FROM ${config.table} WHERE id = ?`).bind(id).run();
+  const result = await c.env.DB
+    .prepare(`UPDATE ${config.table} SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
+    .bind(Date.now(), id)
+    .run();
   if (result.meta.changes === 0) return c.json({ error: "记录不存在" }, 404);
+  await broadcastRecordsChanged(c.env);
+  return c.json({ ok: true });
+});
+
+app.post("/api/trash/:kind/:id/restore", async (c) => {
+  const config = TABLES[c.req.param("kind")];
+  if (!config) return c.json({ error: "未知记录类型" }, 404);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "无效的 id" }, 400);
+
+  const result = await c.env.DB
+    .prepare(`UPDATE ${config.table} SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return c.json({ error: "回收站中没有这条记录" }, 404);
+  await broadcastRecordsChanged(c.env);
+  return c.json({ ok: true });
+});
+
+app.delete("/api/trash/:kind/:id", async (c) => {
+  const config = TABLES[c.req.param("kind")];
+  if (!config) return c.json({ error: "未知记录类型" }, 404);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "无效的 id" }, 400);
+
+  const result = await c.env.DB
+    .prepare(`DELETE FROM ${config.table} WHERE id = ? AND deleted_at IS NOT NULL`)
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return c.json({ error: "回收站中没有这条记录" }, 404);
   await broadcastRecordsChanged(c.env);
   return c.json({ ok: true });
 });

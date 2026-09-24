@@ -1,5 +1,26 @@
 // 前后端共享的记录类型定义,字段与 iOS/Android 版模型一一对应。
 
+export type SharePermission = "read" | "write";
+export interface SessionInfo {
+  permission: "owner" | SharePermission;
+  shareName?: string;
+}
+export interface ShareKey {
+  id: string;
+  name: string;
+  permission: SharePermission;
+  createdAt: number;
+  expiresAt: number | null;
+  disabledAt: number | null;
+  lastUsedAt: number | null;
+  token: string;
+}
+export interface CreateShareKey {
+  name: string;
+  permission: SharePermission;
+  durationDays: 1 | 7 | 30 | null;
+}
+
 export type FeedingType = "formula" | "mixed";
 
 export type BloodGlucoseMoment =
@@ -90,3 +111,12 @@ export type RecordKind =
   | "fetalMovement"
   | "bloodGlucose"
   | "excretion";
+
+export type TrashItem =
+  | { kind: "feeding"; deletedAt: number; record: FeedingRecord }
+  | { kind: "weight"; deletedAt: number; record: WeightRecord }
+  | { kind: "medication"; deletedAt: number; record: MedicationRecord }
+  | { kind: "checkup"; deletedAt: number; record: CheckupRecord }
+  | { kind: "fetalMovement"; deletedAt: number; record: FetalMovementRecord }
+  | { kind: "bloodGlucose"; deletedAt: number; record: BloodGlucoseRecord }
+  | { kind: "excretion"; deletedAt: number; record: ExcretionRecord };

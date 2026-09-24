@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { Icon, type IconName } from "./Icon";
 import {
   DateDisplay,
   bloodGlucoseMomentNames,
@@ -178,11 +179,14 @@ export function TextField({
 // ---------- 距离上次喂奶高亮块 ----------
 
 export function IntervalHighlight({ text, progressMillis }: { text: string; progressMillis: number }) {
-  const [initialProgressMillis] = useState(progressMillis);
+  // 进度环由 QuickLogPage 每秒一次的重渲染驱动(1Hz 走一格),
+  // 而不是 CSS 无限动画:后者在 iOS Safari 上会 60fps 持续重绘,
+  // 长时间挂机后内存膨胀、页面被系统回收成白屏。
+  const angle = Math.min(Math.max(progressMillis / 60_000, 0), 1) * 360;
   return (
     <div
       className="interval-highlight"
-      style={{ animationDelay: `${-Math.max(initialProgressMillis, 0)}ms` }}
+      style={{ "--interval-border-angle": `${angle}deg` } as CSSProperties}
     >
       <span className="value">{text}</span>
     </div>
@@ -230,18 +234,26 @@ export function AmountPicker({
 
       <div className="amount-display">
         <span className="label">当前奶量</span>
-        <span className="value">
+        <span key={currentAmount ?? "empty"} className="value amount-value-change">
           {currentAmount ?? "--"}
           <span className="unit"> ml</span>
         </span>
       </div>
 
       <div className="pill-row">
-        <button type="button" onClick={() => onChange(`${Math.max((currentAmount ?? 60) - 5, 0)}`)}>
+        <button
+          type="button"
+          aria-label="奶量减少 5 毫升"
+          onClick={() => onChange(`${Math.max((currentAmount ?? 60) - 5, 0)}`)}
+        >
           − 减 5
         </button>
         <span className="divider" />
-        <button type="button" onClick={() => onChange(`${(currentAmount ?? 60) + 5}`)}>
+        <button
+          type="button"
+          aria-label="奶量增加 5 毫升"
+          onClick={() => onChange(`${(currentAmount ?? 60) + 5}`)}
+        >
           + 加 5
         </button>
       </div>
@@ -396,10 +408,10 @@ export function MomentGrid({
   );
 }
 
-export function EmptyState({ emoji, text, description }: { emoji: string; text: string; description?: string }) {
+export function EmptyState({ icon, text, description }: { icon: IconName; text: string; description?: string }) {
   return (
     <div style={{ textAlign: "center", padding: "28px 0", display: "flex", flexDirection: "column", gap: 8 }}>
-      <span style={{ fontSize: 28 }}>{emoji}</span>
+      <Icon name={icon} size={28} strokeWidth={1.6} style={{ alignSelf: "center", color: "var(--text-secondary)" }} />
       <span className="muted small">{text}</span>
       {description && (
         <span className="muted" style={{ fontSize: 12 }}>

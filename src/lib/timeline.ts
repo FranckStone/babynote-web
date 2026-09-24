@@ -17,6 +17,7 @@ import {
   feedingTypeNames,
   format1,
 } from "./display";
+import type { IconName } from "../components/Icon";
 
 export type TimelineRecord =
   | { kind: "feeding"; record: FeedingRecord }
@@ -37,14 +38,14 @@ export interface TimelineItem {
   record: TimelineRecord;
 }
 
-export const recordKindMeta: Record<RecordKind, { name: string; emoji: string; tint: string }> = {
-  feeding: { name: "喂奶", emoji: "🍼", tint: "#e91e63" },
-  weight: { name: "体重", emoji: "⚖️", tint: "#f57c00" },
-  medication: { name: "药物", emoji: "💊", tint: "#1e88e5" },
-  checkup: { name: "检查", emoji: "🏥", tint: "#43a047" },
-  fetalMovement: { name: "胎动", emoji: "👶", tint: "#26a69a" },
-  bloodGlucose: { name: "血糖", emoji: "🩸", tint: "#e53935" },
-  excretion: { name: "屎尿", emoji: "🧷", tint: "#8d6e63" },
+export const recordKindMeta: Record<RecordKind, { name: string; icon: IconName; tint: string }> = {
+  feeding: { name: "喂奶", icon: "bottle", tint: "#e91e63" },
+  weight: { name: "体重", icon: "weight", tint: "#f57c00" },
+  medication: { name: "药物", icon: "pill", tint: "#1e88e5" },
+  checkup: { name: "检查", icon: "stethoscope", tint: "#43a047" },
+  fetalMovement: { name: "胎动", icon: "baby", tint: "#26a69a" },
+  bloodGlucose: { name: "血糖", icon: "bloodDrop", tint: "#e53935" },
+  excretion: { name: "屎尿", icon: "poop", tint: "#8d6e63" },
 };
 
 export const recordKinds: RecordKind[] = [
