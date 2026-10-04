@@ -41,56 +41,17 @@ export function QuickLogPage() {
 
   const [filter, setFilter] = useState<FilterKey>("all");
 
-  // 全屏计时:覆盖层 + 尽量申请浏览器原生全屏(iPad Safari 支持,不支持时只显示覆盖层)
+  // 全屏计时:只用应用内覆盖层。不调用 Safari 原生全屏——iPad 上进出各要跑一次系统动画,老设备明显卡顿。
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const openFullscreen = () => {
-    setIsFullscreen(true);
-    const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
-    const request = root.requestFullscreen ?? root.webkitRequestFullscreen;
-    try {
-      const result = request?.call(root);
-      if (result && typeof (result as Promise<void>).catch === "function") (result as Promise<void>).catch(() => {});
-    } catch {
-      // 不支持原生全屏(例如 iPhone 或主屏幕 PWA),只用覆盖层
-    }
-  };
-  const closeFullscreen = () => {
-    setIsFullscreen(false);
-    const doc = document as Document & {
-      webkitFullscreenElement?: Element | null;
-      webkitExitFullscreen?: () => Promise<void> | void;
-    };
-    if (!(doc.fullscreenElement ?? doc.webkitFullscreenElement)) return;
-    try {
-      const result = (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc);
-      if (result && typeof (result as Promise<void>).catch === "function") (result as Promise<void>).catch(() => {});
-    } catch {
-      // ignore
-    }
-  };
+  const openFullscreen = () => setIsFullscreen(true);
+  const closeFullscreen = () => setIsFullscreen(false);
   useEffect(() => {
     if (!isFullscreen) return;
-    const doc = document as Document & { webkitFullscreenElement?: Element | null };
-    let everEntered = false;
-    const onChange = () => {
-      const active = Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement);
-      if (active) everEntered = true;
-      else if (everEntered) setIsFullscreen(false);
-    };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeFullscreen();
+      if (event.key === "Escape") setIsFullscreen(false);
     };
-    document.addEventListener("fullscreenchange", onChange);
-    document.addEventListener("webkitfullscreenchange", onChange);
     document.addEventListener("keydown", onKey);
-    document.body.classList.add("has-fullscreen-timer");
-    return () => {
-      document.removeEventListener("fullscreenchange", onChange);
-      document.removeEventListener("webkitfullscreenchange", onChange);
-      document.removeEventListener("keydown", onKey);
-      document.body.classList.remove("has-fullscreen-timer");
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => document.removeEventListener("keydown", onKey);
   }, [isFullscreen]);
   const [quickActionStatus, setQuickActionStatus] = useState<Record<QuickAction, QuickActionStatus>>({
     feeding: "idle",

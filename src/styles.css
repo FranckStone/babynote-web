@@ -1389,10 +1389,6 @@ select:focus {
   color: var(--pink);
 }
 
-body.has-fullscreen-timer {
-  overflow: hidden;
-}
-
 .feeding-fullscreen {
   position: fixed;
   inset: 0;
@@ -1404,6 +1400,25 @@ body.has-fullscreen-timer {
   padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
     max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   overscroll-behavior: contain;
+  touch-action: manipulation;
+  /* 只动 opacity,走合成层,不触发重排 */
+  animation: feeding-fullscreen-in 140ms ease-out;
+}
+
+@keyframes feeding-fullscreen-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feeding-fullscreen {
+    animation: none;
+  }
 }
 
 .feeding-fullscreen-close {
