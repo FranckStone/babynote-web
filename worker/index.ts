@@ -3,13 +3,14 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { DurableObject } from "cloudflare:workers";
 import { createShareToken, verifyShareToken, createShareSession, verifyShareSession, isShareKeyActive, newShareKeyId, type ShareKeyRow } from "./share";
 import type { SessionInfo, ShareKey } from "../shared/types";
+import { streamFeedingAnalysis, type AIEnv } from "./ai";
 
 type Bindings = {
   DB: D1Database;
   AUTH_PASSWORD: string;
   AUTH_SECRET: string;
   REALTIME: DurableObjectNamespace<RealtimeHub>;
-};
+} & AIEnv;
 
 export class RealtimeHub extends DurableObject<Bindings> {
   constructor(ctx: DurableObjectState, env: Bindings) {
@@ -141,7 +142,9 @@ app.use("/api/*", async (c, next) => {
   const permission = c.get("session").permission;
   const managesKeys = c.req.path === "/api/share-links" || c.req.path.startsWith("/api/share-links/");
   if (managesKeys && permission !== "owner") return c.json({ error: "仅密码登录的管理员可管理分享 Key" }, 403);
-  if (permission === "read" && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
+  // AI 解读只读取前端提交的统计摘要，不修改记录，只读分享也可使用。
+  const isReadOnlyAction = c.req.path === "/api/ai/feeding-analysis";
+  if (permission === "read" && !isReadOnlyAction && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     return c.json({ error: "当前分享 Key 为只读，不能修改记录" }, 403);
   }
   return next();
@@ -201,6 +204,8 @@ async function broadcastRecordsChanged(env: Bindings): Promise<void> {
   const hub = env.REALTIME.getByName("records");
   await hub.fetch("https://realtime.internal/notify", { method: "POST" });
 }
+
+app.post("/api/ai/feeding-analysis", async (c) => streamFeedingAnalysis(c.env, await c.req.text()));
 
 // ---------- 记录表配置:统一的 CRUD ----------
 

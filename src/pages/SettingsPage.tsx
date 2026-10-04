@@ -1,6 +1,7 @@
 import { useAccess } from "../auth";
 import { AnimatedList } from "../components/AnimatedList";
 import { Icon } from "../components/Icon";
+import { ExportDataModal } from "../components/ExportDataModal";
 import { ShareLinkCard } from "../components/ShareLinkCard";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { TrashItem } from "../../shared/types";
@@ -16,7 +17,7 @@ import {
   formatFeedingAmount,
 } from "../lib/display";
 import { recordKindMeta } from "../lib/timeline";
-import { useSettings } from "../store";
+import { useData, useSettings } from "../store";
 import { api } from "../api";
 import { Modal } from "../components/widgets";
 
@@ -223,6 +224,8 @@ export function SettingsPage({ onLogout }: { onLogout: () => void }) {
   const [settings, updateSettings] = useSettings();
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const { records } = useData();
   const [trashLoading, setTrashLoading] = useState(true);
   const [trashError, setTrashError] = useState<string | null>(null);
   const alarmState = useSyncExternalStore(
@@ -387,10 +390,21 @@ export function SettingsPage({ onLogout }: { onLogout: () => void }) {
           )}
           <span className="settings-navigation-chevron" aria-hidden="true"><Icon name="chevronRight" size={20} strokeWidth={2} /></span>
         </button>
+        <button type="button" className="settings-navigation-row" onClick={() => setExportOpen(true)}>
+          <span className="settings-navigation-icon" aria-hidden="true">
+            <Icon name="download" />
+          </span>
+          <span className="settings-navigation-copy">
+            <strong>导出数据</strong>
+            <span className="muted small">下载 CSV 表格或完整 JSON 备份</span>
+          </span>
+          <span className="settings-navigation-chevron" aria-hidden="true"><Icon name="chevronRight" size={20} strokeWidth={2} /></span>
+        </button>
         <span className="muted" style={{ fontSize: 12 }}>
           普通删除只会移入回收站，不会立刻永久清除。
         </span>
       </section>
+      {exportOpen && <ExportDataModal records={records} onDismiss={() => setExportOpen(false)} />}
 
       <section className="card settings-account-card">
         <h2 className="card-title">账号</h2>

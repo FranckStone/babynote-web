@@ -17,12 +17,6 @@
   --radius: 16px;
 }
 
-@property --interval-border-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141216;
@@ -658,18 +652,11 @@ select:focus {
 /* ---------- 快速记录 ---------- */
 
 .interval-highlight {
-  --interval-border-angle: 0deg;
+  position: relative;
+  isolation: isolate;
   min-height: 138px;
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--pink) 8%, var(--surface)),
-      color-mix(in srgb, var(--pink) 8%, var(--surface))
-    ) padding-box,
-    conic-gradient(
-      from 0deg,
-      var(--pink) 0deg var(--interval-border-angle),
-      rgb(233 30 99 / 14%) var(--interval-border-angle) 360deg
-    ) border-box;
+  /* 外圈底色即进度环的"未走"部分;内层填充由 ::before 盖住,只露出 4px 边框 */
+  background: color-mix(in srgb, var(--pink) 14%, var(--surface));
   border: 4px solid transparent;
   border-radius: 16px;
   padding: 12px 14px;
@@ -679,9 +666,100 @@ select:focus {
   justify-content: center;
   gap: 8px;
   text-align: center;
-  /* 进度环角度由 React 每秒设置一次(见 IntervalHighlight),不用 CSS 无限动画:
-     动画自定义属性会让 Safari 主线程 60fps 持续重绘,长时间挂机后内存膨胀、
-     WebContent 进程被 iOS 回收,页面变成一片空白。 */
+}
+
+.interval-highlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pink) 8%, var(--surface));
+}
+
+.interval-highlight > .value,
+.interval-highlight > .label {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * 进度环:左右两个半边容器各自裁掉一半,里面的纯色块绕中心旋转扫出扇形。
+ * 只动画 transform,由合成层匀速驱动,不会像动画 conic-gradient 那样让
+ * Safari 主线程 60fps 重绘(那样长时间挂机后页面会被 iOS 回收成白屏)。
+ */
+.interval-progress {
+  --interval-offset: 0ms;
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  border-radius: 16px;
+  overflow: hidden;
+  container-type: size;
+  pointer-events: none;
+}
+
+.interval-progress-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+.interval-progress-half.right {
+  left: 50%;
+  right: 0;
+}
+
+.interval-progress-half.left {
+  left: 0;
+  right: 50%;
+}
+
+.interval-progress-half > span {
+  --interval-diameter: hypot(100cqw, 100cqh);
+  position: absolute;
+  top: calc(50% - var(--interval-diameter) / 2);
+  width: calc(var(--interval-diameter) / 2 + 1px);
+  height: var(--interval-diameter);
+  background: var(--pink);
+  will-change: transform;
+  animation: 60s linear var(--interval-offset) infinite both;
+}
+
+/* 右半边:色块起始在圆心左侧(被裁掉),前 30 秒顺时针转到右侧 */
+.interval-progress-half.right > span {
+  right: 100%;
+  transform-origin: 100% 50%;
+  animation-name: interval-sweep-first-half;
+}
+
+/* 左半边:色块起始在圆心右侧(被裁掉),后 30 秒顺时针转到左侧 */
+.interval-progress-half.left > span {
+  left: 100%;
+  transform-origin: 0 50%;
+  animation-name: interval-sweep-second-half;
+}
+
+.interval-progress.paused .interval-progress-half > span {
+  animation-play-state: paused;
+}
+
+@keyframes interval-sweep-first-half {
+  0% { transform: rotate(0deg); }
+  50%, 100% { transform: rotate(180deg); }
+}
+
+@keyframes interval-sweep-second-half {
+  0%, 50% { transform: rotate(0deg); }
+  100% { transform: rotate(180deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 减少动态效果时退回每秒走一格 */
+  .interval-progress-half > span {
+    animation-timing-function: steps(30, end);
+  }
 }
 
 .interval-highlight .label {
@@ -969,19 +1047,20 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 26px;
-  font-size: 12px;
+  min-height: 28px;
+  font-size: 13px;
 }
 
 .record-time-button {
   min-width: 82px;
-  height: 26px;
-  padding: 2px 7px;
+  height: 28px;
+  padding: 2px 8px;
   border-radius: 8px;
   background: var(--surface-variant);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1148,6 +1227,270 @@ select:focus {
 
 .quick-records-card .delete-button {
   border: 1px solid rgb(229 57 53 / 16%);
+}
+
+/* iPad / 桌面：喂奶计时是最常看的数字，放到最大。 */
+@media (min-width: 768px) {
+  .quick-feeding-card .interval-highlight {
+    min-height: 180px;
+    padding: 16px 18px;
+  }
+
+  .quick-feeding-card .interval-highlight .value {
+    font-size: clamp(72px, 11vw, 104px);
+  }
+
+  .quick-records-scroll .list-row {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .quick-records-card .list-row {
+    grid-template-columns: 40px minmax(120px, 1fr) minmax(96px, 130px) 150px 40px;
+    gap: 10px;
+  }
+
+  .quick-records-card .icon-badge {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .quick-records-card .record-time-row {
+    min-height: 44px;
+    gap: 8px;
+    font-size: 15px;
+  }
+
+  .quick-records-card .record-time-button {
+    height: 44px;
+    padding: 4px 12px;
+    border-radius: 11px;
+    gap: 8px;
+    color: var(--text);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  .quick-records-card .record-time-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .quick-records-card .record-row-interval {
+    min-height: 44px;
+    border-radius: 11px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .quick-records-card .inline-stepper {
+    height: 44px;
+    border-radius: 12px;
+  }
+
+  .quick-records-card .inline-stepper button {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+
+  .quick-records-card .inline-stepper .amount {
+    flex: 1;
+    font-size: 17px;
+  }
+
+  .quick-records-card .excretion-amount-toggle {
+    width: 100%;
+    height: 44px;
+    border-radius: 12px;
+  }
+
+  .quick-records-card .excretion-amount-toggle button {
+    font-size: 16px;
+  }
+
+  .quick-records-card .delete-button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* 两栏布局下记录卡较窄：时间一行，奶量/屎尿量换到第二行。 */
+@media (min-width: 900px) {
+  .quick-feeding-card .interval-highlight {
+    min-height: 160px;
+  }
+
+  .quick-feeding-card .interval-highlight .value {
+    font-size: clamp(52px, 6vw, 84px);
+  }
+
+  .quick-records-card .list-row {
+    grid-template-columns: 40px minmax(120px, 1fr) minmax(96px, 130px) 40px;
+    grid-template-rows: auto auto;
+    gap: 8px 10px;
+  }
+
+  .quick-records-card .icon-badge {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .quick-records-card .list-row .content {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .quick-records-card .record-row-interval {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .quick-records-card .delete-button {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  .quick-records-card .inline-stepper,
+  .quick-records-card .excretion-amount-toggle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+/* ---------- 喂奶计时全屏 ---------- */
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fullscreen-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgb(127 127 127 / 10%);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.fullscreen-toggle:active {
+  background: rgb(233 30 99 / 14%);
+  color: var(--pink);
+}
+
+body.has-fullscreen-timer {
+  overflow: hidden;
+}
+
+.feeding-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+}
+
+.feeding-fullscreen-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgb(127 127 127 / 12%);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.feeding-fullscreen-close:active {
+  background: rgb(233 30 99 / 14%);
+  color: var(--pink);
+}
+
+.feeding-fullscreen-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.feeding-fullscreen-body {
+  width: min(100%, 980px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.feeding-fullscreen-label {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.feeding-fullscreen .interval-highlight {
+  min-height: min(44vh, 440px);
+  padding: 20px 24px;
+}
+
+.feeding-fullscreen .interval-highlight .value {
+  font-size: clamp(64px, 17vw, 220px);
+  white-space: nowrap;
+}
+
+.feeding-fullscreen-meta {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.feeding-fullscreen .quick-action-button.feeding {
+  min-height: 108px;
+  font-size: 32px;
+}
+
+@media (max-height: 820px) {
+  .feeding-fullscreen-body {
+    gap: 14px;
+  }
+
+  .feeding-fullscreen .interval-highlight {
+    min-height: min(40vh, 320px);
+  }
+
+  .feeding-fullscreen .quick-action-button.feeding {
+    min-height: 88px;
+    font-size: 28px;
+  }
 }
 
 /* ---------- 滑杆 ---------- */
@@ -2213,11 +2556,12 @@ input[type="range"] {
   }
 
   .quick-feeding-card .interval-highlight {
-    min-height: 82px;
+    min-height: 124px;
+    padding: 10px 14px;
   }
 
   .quick-feeding-card .interval-highlight .value {
-    font-size: clamp(38px, 4.8vw, 54px);
+    font-size: clamp(52px, 6vw, 72px);
   }
 
   .quick-feeding-card > .row {
@@ -2297,4 +2641,313 @@ input[type="range"] {
     grid-column: auto;
     grid-row: auto;
   }
+}
+
+/* ---------- 喂奶趋势 ---------- */
+
+.feeding-trend {
+  --feed-band-medium: color-mix(in srgb, var(--pink) 75%, var(--surface));
+  --feed-band-small: color-mix(in srgb, var(--pink) 50%, var(--surface));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .feeding-trend {
+    --feed-band-medium: color-mix(in srgb, var(--pink) 80%, var(--surface));
+    --feed-band-small: color-mix(in srgb, var(--pink) 60%, var(--surface));
+  }
+}
+
+:root[data-night-dim="true"] .feeding-trend {
+  --feed-band-medium: color-mix(in srgb, var(--pink) 80%, var(--surface));
+  --feed-band-small: color-mix(in srgb, var(--pink) 60%, var(--surface));
+}
+
+.feeding-trend-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .feeding-trend-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.feeding-stat-tile {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feeding-stat-tile .label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.feeding-stat-tile .value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.feeding-stat-tile .delta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.feeding-trend-footnote {
+  font-size: 12px;
+  margin: -8px 0 0;
+}
+
+.card .feeding-trend-footnote {
+  margin: 0;
+}
+
+.feeding-insights {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.feeding-insights li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.feeding-insights li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.feeding-insights li.attention::before {
+  background: var(--orange);
+}
+
+.feeding-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: -4px;
+}
+
+.feeding-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feeding-legend i.rect {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.feeding-legend i.line {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.feeding-chart {
+  position: relative;
+  width: 100%;
+  min-height: 214px;
+  touch-action: pan-y;
+}
+
+.feeding-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.feeding-chart rect:focus {
+  outline: none;
+}
+
+.feeding-chart-tick {
+  font-size: 11px;
+  fill: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.feeding-tooltip {
+  position: absolute;
+  top: 0;
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--surface-variant);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.feeding-tooltip strong {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.feeding-tooltip .date {
+  font-weight: 600;
+}
+
+.feeding-tooltip .key-rect::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--key);
+}
+
+.feeding-tooltip .key-line::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--key);
+}
+
+.feeding-tooltip-feeds {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0 12px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.feeding-tooltip-feeds span,
+.feeding-tooltip .key-rect,
+.feeding-tooltip .key-line {
+  white-space: nowrap;
+}
+
+.feeding-tooltip-feeds b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.feeding-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface-variant);
+}
+
+.feeding-ai .row {
+  gap: 8px;
+}
+
+.feeding-ai-button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+  color: var(--pink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.feeding-ai-button:disabled {
+  opacity: 0.6;
+}
+
+.feeding-ai-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--red);
+}
+
+.feeding-ai-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.feeding-ai-body h3 {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.feeding-ai-body p {
+  margin: 0;
+}
+
+.feeding-ai-body p.item {
+  position: relative;
+  padding-left: 14px;
+}
+
+.feeding-ai-body p.item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pink);
+}
+
+/* ---------- 数据导出 ---------- */
+
+.export-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.export-list .export-row {
+  margin: 0;
+}
+
+.stats-download-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pink) 14%, transparent);
+  color: var(--pink);
+  font-size: 13px;
+  font-weight: 600;
 }

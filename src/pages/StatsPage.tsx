@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BloodGlucoseRecord, FeedingRecord } from "../../shared/types";
+import { ExportDataModal } from "../components/ExportDataModal";
+import { FeedingTrend } from "../components/FeedingTrend";
 import { Icon } from "../components/Icon";
 import { EmptyState, SummaryCard } from "../components/widgets";
 import {
@@ -160,6 +162,7 @@ function StatsOverview({ onNavigate }: { onNavigate: (destination: StatsDestinat
 
 function FeedingStats() {
   const { records } = useData();
+  const [exportOpen, setExportOpen] = useState(false);
 
   const { dailyGroups, totalCount, totalAmount } = useMemo(() => {
     const ascending = [...records.feedings].sort((a, b) => a.startedAt - b.startedAt);
@@ -193,12 +196,27 @@ function FeedingStats() {
 
   return (
     <>
+      <FeedingTrend feedings={records.feedings} weights={records.weights} />
+
+      <div className="row">
+        <h2 className="card-title">每日明细</h2>
+        <span className="spacer" />
+        <button type="button" className="stats-download-button" onClick={() => setExportOpen(true)}>
+          <Icon name="download" size={16} strokeWidth={2} />
+          下载数据
+        </button>
+      </div>
+      {exportOpen && <ExportDataModal records={records} onDismiss={() => setExportOpen(false)} />}
       {dailyGroups.map(([day, items]) => (
         <section key={day} className="card">
           <div className="row">
             <span className="semibold small">{DateDisplay.shortDate(day)}</span>
             <span className="spacer" />
-            <span className="muted small">{items.length} 次</span>
+            <span className="muted small">
+              {items.length} 次
+              {items.some((item) => item.record.amountML != null) &&
+                ` · ${formatFeedingAmount(items.reduce((sum, item) => sum + (item.record.amountML ?? 0), 0))}`}
+            </span>
           </div>
           {items.map((item, index) => (
             <FeedingStatsRow

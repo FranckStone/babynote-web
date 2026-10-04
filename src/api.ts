@@ -59,3 +59,32 @@ export const api = {
   permanentlyDeleteTrash: (kind: RecordKind, id: number) =>
     request<{ ok: true }>(`/api/trash/${kind}/${id}`, { method: "DELETE" }),
 };
+
+/** 流式读取 DeepSeek 解读，每收到一段正文回调一次。 */
+export async function streamFeedingAnalysis(
+  summary: unknown,
+  onText: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch("/api/ai/feeding-analysis", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ summary }),
+    signal,
+  });
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("babynote-session-expired"));
+    throw new UnauthorizedError();
+  }
+  if (!response.ok || !response.body) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `请求失败 (${response.status})`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onText(decoder.decode(value, { stream: true }));
+  }
+}

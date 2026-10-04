@@ -26,12 +26,8 @@ type DayRecord =
 export function QuickLogPage() {
   const { records, create, update, remove } = useData();
 
-  // 每秒刷新“距离上次喂奶”的实时计时
+  // 每秒刷新“距离上次喂奶”的实时计时(定时器见下方,对齐到整秒边界)
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const latestAmount = records.feedings.find((record) => record.amountML != null)?.amountML ?? null;
   const [amountText, setAmountText] = useState("60");
@@ -44,6 +40,58 @@ export function QuickLogPage() {
   }, [latestAmount]);
 
   const [filter, setFilter] = useState<FilterKey>("all");
+
+  // 全屏计时:覆盖层 + 尽量申请浏览器原生全屏(iPad Safari 支持,不支持时只显示覆盖层)
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const openFullscreen = () => {
+    setIsFullscreen(true);
+    const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+    const request = root.requestFullscreen ?? root.webkitRequestFullscreen;
+    try {
+      const result = request?.call(root);
+      if (result && typeof (result as Promise<void>).catch === "function") (result as Promise<void>).catch(() => {});
+    } catch {
+      // 不支持原生全屏(例如 iPhone 或主屏幕 PWA),只用覆盖层
+    }
+  };
+  const closeFullscreen = () => {
+    setIsFullscreen(false);
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    if (!(doc.fullscreenElement ?? doc.webkitFullscreenElement)) return;
+    try {
+      const result = (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc);
+      if (result && typeof (result as Promise<void>).catch === "function") (result as Promise<void>).catch(() => {});
+    } catch {
+      // ignore
+    }
+  };
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    let everEntered = false;
+    const onChange = () => {
+      const active = Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement);
+      if (active) everEntered = true;
+      else if (everEntered) setIsFullscreen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeFullscreen();
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("has-fullscreen-timer");
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("has-fullscreen-timer");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
   const [quickActionStatus, setQuickActionStatus] = useState<Record<QuickAction, QuickActionStatus>>({
     feeding: "idle",
     poop: "idle",
@@ -164,8 +212,44 @@ export function QuickLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records.feedings, now, pendingAmounts]);
 
-  const previousFeedingStart = records.feedings.find((record) => record.startedAt < now)?.startedAt ?? null;
+  const previousFeeding = records.feedings.find((record) => record.startedAt < now) ?? null;
+  const previousFeedingStart = previousFeeding?.startedAt ?? null;
+
+  // 对齐到“距上次喂奶”的整秒边界再刷新,让秒数文字和匀速进度环在同一刻进位
+  const tickPhase = (((previousFeedingStart ?? 0) % 1000) + 1000) % 1000;
+  useEffect(() => {
+    let timer = 0;
+    const scheduleTick = () => {
+      const sinceBoundary = (((Date.now() - tickPhase) % 1000) + 1000) % 1000;
+      timer = window.setTimeout(() => {
+        setNow(Date.now());
+        scheduleTick();
+      }, 1000 - sinceBoundary + 5);
+    };
+    scheduleTick();
+    return () => window.clearTimeout(timer);
+  }, [tickPhase]);
   const hasAmount = amountText.trim() !== "" && Number.isFinite(Number(amountText.trim()));
+
+  const feedingButton = (label: string) => (
+    <button
+      type="button"
+      className={`primary-button quick-action-button feeding ${quickActionStatus.feeding}`}
+      disabled={!hasAmount || quickActionStatus.feeding === "saving" || quickActionStatus.feeding === "success"}
+      aria-busy={quickActionStatus.feeding === "saving"}
+      aria-live="polite"
+      onClick={() =>
+        runQuickAction("feeding", () => create("feeding", {
+          startedAt: Date.now(),
+          feedingType: "formula",
+          amountML: Number(amountText.trim()),
+          note: "",
+        }))
+      }
+    >
+      {quickActionContent("feeding", "plus", label)}
+    </button>
+  );
 
   // 日汇总
   const feedingItems = dayRecords.filter((item) => item.kind === "feeding") as Extract<DayRecord, { kind: "feeding" }>[];
@@ -178,11 +262,16 @@ export function QuickLogPage() {
       <h1 className="page-title">快速记录</h1>
 
       <section className="card quick-feeding-card">
-        <h2 className="card-title">喂奶</h2>
+        <div className="card-title-row">
+          <h2 className="card-title">喂奶</h2>
+          <button type="button" className="fullscreen-toggle" aria-label="全屏显示喂奶计时" onClick={openFullscreen}>
+            <Icon name="expand" size={18} strokeWidth={2} />
+          </button>
+        </div>
 
         <IntervalHighlight
           text={feedingIntervalText(previousFeedingStart, now)}
-          progressMillis={previousFeedingStart == null ? 0 : Math.max(now - previousFeedingStart, 0) % 60_000}
+          runningSince={previousFeedingStart}
         />
 
         <div className="row" style={{ background: "var(--surface-variant)", borderRadius: 16, padding: 12 }}>
@@ -207,24 +296,45 @@ export function QuickLogPage() {
           onChange={setAmountText}
         />
 
-        <button
-          type="button"
-          className={`primary-button quick-action-button feeding ${quickActionStatus.feeding}`}
-          disabled={!hasAmount || quickActionStatus.feeding === "saving" || quickActionStatus.feeding === "success"}
-          aria-busy={quickActionStatus.feeding === "saving"}
-          aria-live="polite"
-          onClick={() =>
-            runQuickAction("feeding", () => create("feeding", {
-              startedAt: Date.now(),
-              feedingType: "formula",
-              amountML: Number(amountText.trim()),
-              note: "",
-            }))
-          }
-        >
-          {quickActionContent("feeding", "plus", "喂奶")}
-        </button>
+        {feedingButton("喂奶")}
       </section>
+
+      {isFullscreen && (
+        <div
+          className="feeding-fullscreen"
+          role="dialog"
+          aria-modal="true"
+          aria-label="喂奶计时"
+          onClick={(event) => {
+            // 点任意位置退出全屏;只有“喂奶”按钮保留自己的点击行为
+            if ((event.target as HTMLElement).closest(".quick-action-button")) return;
+            closeFullscreen();
+          }}
+        >
+          <button type="button" className="feeding-fullscreen-close" aria-label="退出全屏" onClick={closeFullscreen}>
+            <Icon name="collapse" size={24} strokeWidth={2} />
+          </button>
+          <span className="feeding-fullscreen-hint">点击任意位置退出</span>
+          <div className="feeding-fullscreen-body">
+            <span className="feeding-fullscreen-label">距上次喂奶</span>
+            <IntervalHighlight
+              text={feedingIntervalText(previousFeedingStart, now)}
+              runningSince={previousFeedingStart}
+            />
+            <div className="feeding-fullscreen-meta">
+              <span>
+                上次 {previousFeeding ? DateDisplay.clockTime(previousFeeding.startedAt) : "—"}
+                {previousFeeding?.amountML != null ? ` · ${formatFeedingAmount(previousFeeding.amountML)}` : ""}
+              </span>
+              <span>
+                3小时内 {formatFeedingAmount(threeHourStats.total)}
+                {threeHourStats.count > 0 ? ` · ${threeHourStats.count} 次` : ""}
+              </span>
+            </div>
+            {feedingButton(hasAmount ? `喂奶 ${amountText.trim()} ml` : "喂奶")}
+          </div>
+        </div>
+      )}
 
       <section className="card quick-excretion-card">
         <h2 className="card-title">屎尿</h2>

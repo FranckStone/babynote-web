@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import {
   DateDisplay,
@@ -178,16 +178,46 @@ export function TextField({
 
 // ---------- 距离上次喂奶高亮块 ----------
 
-export function IntervalHighlight({ text, progressMillis }: { text: string; progressMillis: number }) {
-  // 进度环由 QuickLogPage 每秒一次的重渲染驱动(1Hz 走一格),
-  // 而不是 CSS 无限动画:后者在 iOS Safari 上会 60fps 持续重绘,
-  // 长时间挂机后内存膨胀、页面被系统回收成白屏。
-  const angle = Math.min(Math.max(progressMillis / 60_000, 0), 1) * 360;
+export function IntervalHighlight({
+  text,
+  progressMillis = 0,
+  runningSince = null,
+}: {
+  text: string;
+  /** 静止显示:进度环停在这一分钟内的第几毫秒 */
+  progressMillis?: number;
+  /** 实时显示:从这个时间点起每 60 秒匀速转一圈 */
+  runningSince?: number | null;
+}) {
+  // 进度环只用 transform 旋转两个半边色块,动画跑在合成层(iOS 上由 Core Animation 驱动),
+  // 不触发重绘。以前直接动画 conic-gradient 的角度会让 Safari 主线程 60fps 持续重绘,
+  // 长时间挂机后内存膨胀、WebContent 进程被回收成白屏。
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  // 实时模式:每次重渲染(父组件每秒一次)核对动画时间和墙钟,偏差超过 200ms 才校正。
+  // 页面在后台加载、被挂起或节流后动画时间线会停住,回到前台后第一秒内就能拉回正确位置。
+  useLayoutEffect(() => {
+    if (runningSince == null) return;
+    const expected = Math.max(Date.now() - runningSince, 0) % 60_000;
+    for (const animation of progressRef.current?.getAnimations({ subtree: true }) ?? []) {
+      const current = Number(animation.currentTime ?? 0) % 60_000;
+      const drift = Math.abs(current - expected);
+      if (Math.min(drift, 60_000 - drift) > 200) animation.currentTime = expected;
+    }
+  });
+
   return (
-    <div
-      className="interval-highlight"
-      style={{ "--interval-border-angle": `${angle}deg` } as CSSProperties}
-    >
+    <div className="interval-highlight">
+      <div
+        ref={progressRef}
+        key={runningSince ?? "static"}
+        className={`interval-progress ${runningSince == null ? "paused" : ""}`}
+        style={{ "--interval-offset": `${runningSince == null ? -Math.max(progressMillis, 0) % 60_000 : 0}ms` } as CSSProperties}
+        aria-hidden="true"
+      >
+        <span className="interval-progress-half right"><span /></span>
+        <span className="interval-progress-half left"><span /></span>
+      </div>
       <span className="value">{text}</span>
     </div>
   );
