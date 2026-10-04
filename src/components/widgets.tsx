@@ -182,12 +182,17 @@ export function IntervalHighlight({
   text,
   progressMillis = 0,
   runningSince = null,
+  onClick,
+  actionLabel,
 }: {
   text: string;
   /** 静止显示:进度环停在这一分钟内的第几毫秒 */
   progressMillis?: number;
   /** 实时显示:从这个时间点起每 60 秒匀速转一圈 */
   runningSince?: number | null;
+  /** 传入后整个计时框可点击(例如点击放大) */
+  onClick?: () => void;
+  actionLabel?: string;
 }) {
   // 进度环只用 transform 旋转两个半边色块,动画跑在合成层(iOS 上由 Core Animation 驱动),
   // 不触发重绘。以前直接动画 conic-gradient 的角度会让 Safari 主线程 60fps 持续重绘,
@@ -206,8 +211,25 @@ export function IntervalHighlight({
     }
   });
 
+  const tappable = onClick != null;
   return (
-    <div className="interval-highlight">
+    <div
+      className={`interval-highlight ${tappable ? "is-tappable" : ""}`}
+      role={tappable ? "button" : undefined}
+      tabIndex={tappable ? 0 : undefined}
+      aria-label={tappable ? actionLabel : undefined}
+      onClick={onClick}
+      onKeyDown={
+        tappable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       <div
         ref={progressRef}
         key={runningSince ?? "static"}

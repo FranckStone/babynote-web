@@ -223,16 +223,13 @@ export function QuickLogPage() {
       <h1 className="page-title">快速记录</h1>
 
       <section className="card quick-feeding-card">
-        <div className="card-title-row">
-          <h2 className="card-title">喂奶</h2>
-          <button type="button" className="fullscreen-toggle" aria-label="全屏显示喂奶计时" onClick={openFullscreen}>
-            <Icon name="expand" size={18} strokeWidth={2} />
-          </button>
-        </div>
+        <h2 className="card-title">喂奶</h2>
 
         <IntervalHighlight
           text={feedingIntervalText(previousFeedingStart, now)}
           runningSince={previousFeedingStart}
+          onClick={openFullscreen}
+          actionLabel="点击放大喂奶计时"
         />
 
         <div className="row" style={{ background: "var(--surface-variant)", borderRadius: 16, padding: 12 }}>
