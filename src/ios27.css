@@ -5,24 +5,37 @@
  */
 
 :root {
-  --bg: #f2f2f7;
+  --pink: #e0457b;
+  --orange: #e5782a;
+  --yellow: #d89a0e;
+  --blue: #3478d6;
+  --green: #2f9e63;
+  --mint: #1fae9a;
+  --teal: #138a8a;
+  --red: #e2434f;
+  --brown: #a86f4a;
+  --bg: #faf7f6;
   --surface: #ffffff;
-  --surface-variant: #ececf1;
-  --text: #000000;
-  --text-secondary: #8a8a8e;
+  --surface-variant: #f3eeef;
+  --text: #38343a;
+  --text-secondary: #82767e;
+  --heading: #493b42;
+  --tone-rose: rgb(224 69 123 / 7%);
+  --tone-neutral: rgb(130 118 126 / 6%);
+  --card-edge: rgb(131 104 116 / 12%);
+  --cancel-color: #756771;
   --radius: 26px;
 
-  --glass-fill: rgb(250 250 252 / 76%);
-  --glass-fill-strong: rgb(252 252 254 / 88%);
+  --glass-fill: rgb(255 253 252 / 92%);
+  --glass-fill-strong: rgb(255 253 252 / 96%);
   --glass-blur: blur(28px) saturate(190%);
   --glass-edge: rgb(0 0 0 / 11%);
   --glass-highlight: rgb(255 255 255 / 92%);
   --glass-highlight-soft: rgb(255 255 255 / 38%);
   --glass-shadow: 0 10px 34px rgb(0 0 0 / 11%), 0 1px 4px rgb(0 0 0 / 7%);
-  --glass-lens: rgb(120 120 128 / 13%);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 3%), 0 4px 14px rgb(0 0 0 / 3%);
-  --ambient-a: rgb(233 30 99 / 9%);
-  --ambient-b: rgb(30 136 229 / 7%);
+  --glass-lens: rgb(224 69 123 / 7%);
+  --card-shadow: 0 2px 4px rgb(92 67 78 / 2%), 0 8px 26px rgb(92 67 78 / 4%);
+  --ambient-a: rgb(224 69 123 / 5%);
 
   --glass:
     inset 0 1px 0.5px var(--glass-highlight),
@@ -33,26 +46,44 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #000000;
-    --surface: #1c1c1e;
-    --surface-variant: #2c2c2e;
-    --text: #ffffff;
-    --text-secondary: #98989f;
+    --pink: #ff7aa8;
+    --orange: #ffa45c;
+    --yellow: #ffcf4d;
+    --blue: #6fa8ff;
+    --green: #5fd18f;
+    --mint: #5fe0c8;
+    --teal: #4fc4c4;
+    --red: #ff6b75;
+    --brown: #d6a37f;
+    --bg: #1d1a1c;
+    --surface: #292527;
+    --surface-variant: #363034;
+    --text: #f2e9ed;
+    --text-secondary: #b6a8b0;
+    --heading: #f2e1e8;
+    --tone-rose: rgb(224 69 123 / 9%);
+    --tone-neutral: rgb(182 168 176 / 7%);
+    --card-edge: rgb(215 187 200 / 10%);
+    --cancel-color: #c1b2bb;
 
-    --glass-fill: rgb(38 38 42 / 72%);
-    --glass-fill-strong: rgb(44 44 48 / 86%);
+    --glass-fill: rgb(41 37 39 / 92%);
+    --glass-fill-strong: rgb(41 37 39 / 96%);
     --glass-edge: rgb(0 0 0 / 55%);
     --glass-highlight: rgb(255 255 255 / 24%);
     --glass-highlight-soft: rgb(255 255 255 / 7%);
     --glass-shadow: 0 10px 34px rgb(0 0 0 / 45%), 0 0 0 0.5px rgb(255 255 255 / 9%);
     --glass-lens: rgb(255 255 255 / 12%);
     --card-shadow: none;
-    --ambient-a: rgb(233 30 99 / 12%);
-    --ambient-b: rgb(30 136 229 / 10%);
+    --ambient-a: rgb(224 69 123 / 5%);
   }
 }
 
 :root[data-night-dim="true"] {
+  --heading: #d6c7ce;
+  --tone-rose: rgb(216 75 125 / 5%);
+  --tone-neutral: rgb(182 168 176 / 4%);
+  --card-edge: rgb(224 160 190 / 8%);
+  --cancel-color: #b6a8b0;
   --glass-fill: rgb(22 20 26 / 78%);
   --glass-fill-strong: rgb(26 24 30 / 90%);
   --glass-edge: rgb(0 0 0 / 60%);
@@ -62,7 +93,6 @@
   --glass-lens: rgb(255 255 255 / 9%);
   --card-shadow: none;
   --ambient-a: rgb(216 75 125 / 7%);
-  --ambient-b: rgb(77 135 189 / 5%);
 }
 
 html,
@@ -72,11 +102,10 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* 玻璃需要身后有内容才看得出折射:给页面一层很淡的环境色 */
+/* 奶油白底色，只在顶部保留一层淡淡的玫瑰色。 */
 body {
   background:
     radial-gradient(120% 60% at 0% 0%, var(--ambient-a), transparent 60%),
-    radial-gradient(100% 50% at 100% 100%, var(--ambient-b), transparent 60%),
     var(--bg);
   background-attachment: fixed;
   min-height: 100dvh;
@@ -101,6 +130,7 @@ body {
   font-size: 34px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--heading);
 }
 
 /* ---------- 底部悬浮玻璃 Tab 栏 ---------- */
@@ -129,6 +159,8 @@ body {
 }
 
 .tab-item {
+  --nav-color: var(--pink);
+  --nav-tint: var(--tone-rose);
   gap: 1px;
   padding: 6px 0 5px;
   border-radius: 999px;
@@ -139,7 +171,15 @@ body {
 }
 
 .tab-item.active {
-  background: var(--glass-lens);
+  background: var(--nav-tint);
+  color: var(--nav-color);
+}
+
+.tab-item:not(.primary) .tab-icon {
+  color: var(--text-secondary);
+}
+
+.tab-item.active:not(.primary) .tab-icon {
   color: var(--pink);
 }
 
@@ -166,10 +206,23 @@ body {
   transform: scale(1.06);
 }
 
+.tab-item.primary,
+.tab-item.primary .tab-icon,
+.amount-shortcut.active {
+  color: var(--surface);
+}
+
+/* 底栏里文字在粉色圆钮下方的玻璃底上，用白色会看不见 */
+.tab-item.primary > span:last-child {
+  color: var(--pink);
+}
+
 /* ---------- 卡片 / 分组 ---------- */
 
 .card {
   border-radius: var(--radius);
+  border: 1px solid var(--card-edge);
+  background: var(--surface);
   box-shadow: var(--card-shadow);
 }
 
@@ -177,15 +230,45 @@ body {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.015em;
+  color: var(--heading);
 }
 
 .summary-card {
   border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
+}
+
+.quick-records-card .list-row {
+  border-color: var(--card-edge);
+  background: var(--surface);
+}
+
+.timeline-record-time,
+.quick-records-card .record-time-button {
+  background: var(--tone-neutral);
 }
 
 .summary-card .value {
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.amount-shortcut {
+  background: var(--tone-rose);
+}
+
+.amount-shortcut.active {
+  background: var(--pink);
+}
+
+.amount-display,
+.pill-row {
+  border-color: var(--card-edge);
+  background: var(--tone-rose);
+}
+
+.pill-row .divider {
+  background: var(--card-edge);
 }
 
 /* ---------- 控件 ---------- */
@@ -210,7 +293,7 @@ select:focus {
   border-radius: 999px;
   padding: 3px;
   gap: 0;
-  background: var(--surface-variant);
+  background: var(--tone-neutral);
 }
 
 .segmented button {
@@ -221,7 +304,8 @@ select:focus {
 }
 
 .segmented button.active {
-  background: var(--glass-fill-strong);
+  background: var(--surface);
+  color: var(--pink);
   box-shadow:
     inset 0 1px 0.5px var(--glass-highlight),
     inset 0 0 0 0.5px var(--glass-edge),
@@ -364,9 +448,18 @@ select:focus {
     border-radius: 36px;
   }
 
+  .tab-bar-inner {
+    gap: 10px;
+  }
+
   .tab-item {
     border-radius: 22px;
     font-size: 12px;
+  }
+
+  /* 主按钮有投影，上下多留一点距离，避免和选中态底色贴在一起 */
+  .tab-item.primary {
+    margin-block: 6px;
   }
 
   .tab-item.primary {
@@ -380,6 +473,10 @@ select:focus {
   .tab-item.primary .tab-icon {
     background: transparent;
     box-shadow: none;
+  }
+
+  .tab-item.primary > span:last-child {
+    color: var(--surface);
   }
 
   .tab-item.primary.active {

@@ -52,8 +52,8 @@ export function SummaryCard({
       type="button"
       className="summary-card"
       style={{
-        background: `color-mix(in srgb, ${tint} 12%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${tint} 18%, transparent)`,
+        background: `color-mix(in srgb, ${tint} 16%, var(--surface))`,
+        border: `1px solid color-mix(in srgb, ${tint} 32%, transparent)`,
         cursor: onClick ? "pointer" : "default",
       }}
       onClick={onClick}

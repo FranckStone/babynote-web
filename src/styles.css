@@ -314,7 +314,9 @@ select:focus {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  /* 横向滚动会裁掉选中 chip 的投影，四周留出投影空间再用负 margin 抵消 */
+  padding: 6px 12px 14px;
+  margin: -6px -12px -10px;
   scrollbar-width: none;
 }
 
@@ -2431,9 +2433,10 @@ input[type="range"] {
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: minmax(90px, 1fr) 76px 58px;
+    /* 固定列宽在窄屏会把编辑按钮挤出去压住删除按钮，改成可收缩的列 */
+    grid-template-columns: minmax(0, 1fr) minmax(56px, 72px) auto;
     grid-template-rows: auto auto;
-    gap: 8px 7px;
+    gap: 8px 6px;
   }
 
   .timeline-record-row {
@@ -2455,7 +2458,7 @@ input[type="range"] {
   .timeline-record-main .content {
     grid-column: 1;
     grid-row: 1;
-    min-width: 90px;
+    min-width: 0;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
