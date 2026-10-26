@@ -8,18 +8,29 @@
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply babynote --local",
-    "db:migrate:remote": "wrangler d1 migrations apply babynote --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply babynote --remote",
+    "build:server": "npm run build && node scripts/build-server.mjs",
+    "start:server": "node dist/server.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.server.json",
+    "pretest": "npm run build:server"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.5",
     "hono": "^4.6.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260708.1",
+    "@types/node": "^24.19.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.3.3",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "wrangler": "^4.0.0"

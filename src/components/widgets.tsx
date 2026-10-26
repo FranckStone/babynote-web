@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
+import { intervalSweepFrames } from "../lib/intervalProgress";
 import {
   DateDisplay,
   bloodGlucoseMomentNames,
@@ -184,27 +185,107 @@ export function IntervalHighlight({
   runningSince = null,
   onClick,
   actionLabel,
+  fitText = false,
 }: {
   text: string;
   /** 静止显示:进度环停在这一分钟内的第几毫秒 */
   progressMillis?: number;
-  /** 实时显示:从这个时间点起每 60 秒匀速转一圈 */
+  /** 实时显示:从这个时间点起沿边框匀速前进,60 秒转一圈 */
   runningSince?: number | null;
   /** 传入后整个计时框可点击(例如点击放大) */
   onClick?: () => void;
   actionLabel?: string;
+  /** 大字模式按实际文字宽度缩小字号,保持整段时间在框内 */
+  fitText?: boolean;
 }) {
-  // 进度环只用 transform 旋转两个半边色块,动画跑在合成层(iOS 上由 Core Animation 驱动),
+  // 进度环只用 transform 平移沿边的色条,动画跑在合成层(iOS 上由 Core Animation 驱动),
   // 不触发重绘。以前直接动画 conic-gradient 的角度会让 Safari 主线程 60fps 持续重绘,
   // 长时间挂机后内存膨胀、WebContent 进程被回收成白屏。
   const progressRef = useRef<HTMLDivElement>(null);
+  const progressAnimations = useRef<Animation[]>([]);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const fitValue = useCallback(() => {
+    const value = valueRef.current;
+    const content = textRef.current;
+    if (!fitText || !value || !content) return;
+
+    // 每次从 CSS 的目标字号测量,窗口变大或时间变短后也能恢复大字。
+    const fontSize = Number.parseFloat(window.getComputedStyle(value).fontSize);
+    content.style.fontSize = `${fontSize}px`;
+    const availableWidth = value.getBoundingClientRect().width;
+    const textWidth = content.getBoundingClientRect().width;
+    if (availableWidth > 0 && textWidth > availableWidth) {
+      content.style.fontSize = `${Math.floor(fontSize * (availableWidth - 1) / textWidth * 100) / 100}px`;
+    }
+  }, [fitText]);
+
+  useLayoutEffect(() => {
+    fitValue();
+  }, [text, fitValue]);
+
+  useLayoutEffect(() => {
+    if (!fitText) return;
+    // ResizeObserver 覆盖容器尺寸变化;旧 Safari 仍通过 resize 和每秒刷新校正。
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fitValue);
+    if (valueRef.current) observer?.observe(valueRef.current);
+    window.addEventListener("resize", fitValue);
+    document.fonts?.addEventListener("loadingdone", fitValue);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fitValue);
+      document.fonts?.removeEventListener("loadingdone", fitValue);
+    };
+  }, [fitText, fitValue]);
+
+  useLayoutEffect(() => {
+    const ring = progressRef.current;
+    if (!ring) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let previousWidth = 0;
+    let previousHeight = 0;
+    const resize = () => {
+      const width = ring.clientWidth;
+      const height = ring.clientHeight;
+      if (width === previousWidth && height === previousHeight) return;
+      previousWidth = width;
+      previousHeight = height;
+      progressAnimations.current.forEach((animation) => animation.cancel());
+      const frames = intervalSweepFrames(width, height);
+      const elapsed = runningSince == null ? progressMillis : Date.now() - runningSince;
+      progressAnimations.current = Array.from(ring.querySelectorAll<HTMLElement>(".interval-progress-bar > span"))
+        .map((half, index) => {
+          const animation = half.animate(frames[index], { duration: 60_000, iterations: Infinity, fill: "both", easing: "linear" });
+          if (runningSince == null || reducedMotion.matches) animation.pause();
+          animation.currentTime = Math.max(elapsed, 0) % 60_000;
+          return animation;
+        });
+    };
+    resize();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+    observer?.observe(ring);
+    window.addEventListener("resize", resize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", resize);
+      progressAnimations.current.forEach((animation) => animation.cancel());
+      progressAnimations.current = [];
+    };
+  }, [runningSince, progressMillis]);
 
   // 实时模式:每次重渲染(父组件每秒一次)核对动画时间和墙钟,偏差超过 200ms 才校正。
   // 页面在后台加载、被挂起或节流后动画时间线会停住,回到前台后第一秒内就能拉回正确位置。
   useLayoutEffect(() => {
     if (runningSince == null) return;
     const expected = Math.max(Date.now() - runningSince, 0) % 60_000;
-    for (const animation of progressRef.current?.getAnimations({ subtree: true }) ?? []) {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    for (const animation of progressAnimations.current) {
+      if (reducedMotion) {
+        animation.pause();
+        animation.currentTime = Math.floor(expected / 1000) * 1000;
+        continue;
+      }
+      if (animation.playState === "paused") animation.play();
       const current = Number(animation.currentTime ?? 0) % 60_000;
       const drift = Math.abs(current - expected);
       if (Math.min(drift, 60_000 - drift) > 200) animation.currentTime = expected;
@@ -233,14 +314,18 @@ export function IntervalHighlight({
       <div
         ref={progressRef}
         key={runningSince ?? "static"}
-        className={`interval-progress ${runningSince == null ? "paused" : ""}`}
-        style={{ "--interval-offset": `${runningSince == null ? -Math.max(progressMillis, 0) % 60_000 : 0}ms` } as CSSProperties}
+        className="interval-progress"
         aria-hidden="true"
       >
-        <span className="interval-progress-half right"><span /></span>
-        <span className="interval-progress-half left"><span /></span>
+        <span className="interval-progress-bar top-right"><span /></span>
+        <span className="interval-progress-bar right"><span /></span>
+        <span className="interval-progress-bar bottom"><span /></span>
+        <span className="interval-progress-bar left"><span /></span>
+        <span className="interval-progress-bar top-left"><span /></span>
       </div>
-      <span className="value">{text}</span>
+      <span ref={valueRef} className={`value${fitText ? " fit-text" : ""}`}>
+        {fitText ? <span ref={textRef}>{text}</span> : text}
+      </span>
     </div>
   );
 }
@@ -298,7 +383,7 @@ export function AmountPicker({
           aria-label="奶量减少 5 毫升"
           onClick={() => onChange(`${Math.max((currentAmount ?? 60) - 5, 0)}`)}
         >
-          − 减 5
+          减 5
         </button>
         <span className="divider" />
         <button
@@ -306,7 +391,7 @@ export function AmountPicker({
           aria-label="奶量增加 5 毫升"
           onClick={() => onChange(`${(currentAmount ?? 60) + 5}`)}
         >
-          + 加 5
+          加 5
         </button>
       </div>
     </div>

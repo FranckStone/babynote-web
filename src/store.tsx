@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { AllRecords, RecordKind } from "../shared/types";
 import { api } from "./api";
+import { startRecordSync } from "./lib/recordSync";
 
 const EMPTY_RECORDS: AllRecords = {
   feedings: [],
@@ -35,124 +37,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [records, setRecords] = useState<AllRecords>(EMPTY_RECORDS);
   const [isLoading, setIsLoading] = useState(true);
 
+  const reloadVersion = useRef(0);
   const reload = useCallback(async () => {
-    const data = await api.fetchRecords();
-    setRecords(data);
-    setIsLoading(false);
+    const version = ++reloadVersion.current;
+    try {
+      const data = await api.fetchRecords();
+      // 写入后的补拉与后台同步可能重叠，旧请求不能覆盖新请求的结果。
+      if (version === reloadVersion.current) setRecords(data);
+    } finally {
+      if (version === reloadVersion.current) setIsLoading(false);
+    }
   }, []);
 
-  useEffect(() => {
-    reload().catch(() => setIsLoading(false));
-  }, [reload]);
-
-  // 事件驱动实时同步：其他设备发生写入后，WebSocket 立即通知当前页面重新读取。
-  // iOS Safari 挂起页面时经常把连接弄成"半死"状态(不触发 close),因此:
-  // 1) 心跳 ping/pong 检测死链;2) 页面恢复可见时补拉数据并校验连接;3) 断线指数退避重连,重连成功后补拉。
-  useEffect(() => {
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-    let heartbeatTimer: number | null = null;
-    let pongTimer: number | null = null;
-    let reconnectDelay = 1000;
-    let hasConnectedOnce = false;
-    let disposed = false;
-
-    const safeReload = () => void reload().catch(() => {});
-
-    const clearPongTimer = () => {
-      if (pongTimer != null) {
-        window.clearTimeout(pongTimer);
-        pongTimer = null;
-      }
-    };
-
-    const stopHeartbeat = () => {
-      if (heartbeatTimer != null) {
-        window.clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-      clearPongTimer();
-    };
-
-    const pingSocket = (target: WebSocket) => {
-      try {
-        target.send("ping");
-      } catch {
-        return;
-      }
-      // 10 秒内没有任何服务端消息就视为死链,主动关闭以触发重连
-      if (pongTimer == null) {
-        pongTimer = window.setTimeout(() => {
-          pongTimer = null;
-          target.close();
-        }, 10_000);
-      }
-    };
-
-    const connect = () => {
-      if (disposed || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const nextSocket = new WebSocket(`${protocol}//${window.location.host}/api/events`);
-      socket = nextSocket;
-
-      nextSocket.addEventListener("open", () => {
-        reconnectDelay = 1000;
-        // 重连成功后补拉断线期间可能错过的变更
-        if (hasConnectedOnce) safeReload();
-        hasConnectedOnce = true;
-        stopHeartbeat();
-        heartbeatTimer = window.setInterval(() => {
-          if (document.visibilityState === "visible") pingSocket(nextSocket);
-        }, 30_000);
-      });
-
-      nextSocket.addEventListener("message", (event) => {
-        clearPongTimer(); // 收到任何消息都说明连接活着
-        if (event.data === "records-changed") safeReload();
-      });
-
-      nextSocket.addEventListener("close", () => {
-        // 已被新连接取代的旧连接,收尾时不能动新连接的心跳/重连状态
-        if (socket !== nextSocket) return;
-        socket = null;
-        stopHeartbeat();
-        if (disposed) return;
-        reconnectTimer = window.setTimeout(connect, reconnectDelay);
-        reconnectDelay = Math.min(reconnectDelay * 2, 15_000);
-      });
-    };
-
-    // 页面从后台/冻结状态恢复(visibilitychange / bfcache pageshow):主动补拉 + 校验连接
-    const handleResume = () => {
-      if (disposed || document.visibilityState !== "visible") return;
-      if (hasConnectedOnce) safeReload();
-      if (socket?.readyState === WebSocket.OPEN) {
-        pingSocket(socket);
-      } else if (socket?.readyState !== WebSocket.CONNECTING) {
-        if (reconnectTimer != null) {
-          window.clearTimeout(reconnectTimer);
-          reconnectTimer = null;
-        }
-        reconnectDelay = 1000;
-        connect();
-      }
-    };
-
-    connect();
-    window.addEventListener("online", connect);
-    document.addEventListener("visibilitychange", handleResume);
-    window.addEventListener("pageshow", handleResume);
-
-    return () => {
-      disposed = true;
-      window.removeEventListener("online", connect);
-      document.removeEventListener("visibilitychange", handleResume);
-      window.removeEventListener("pageshow", handleResume);
-      if (reconnectTimer != null) window.clearTimeout(reconnectTimer);
-      stopHeartbeat();
-      socket?.close();
-    };
-  }, [reload]);
+  useEffect(() => startRecordSync(reload), [reload]);
 
   const create = useCallback(
     async (kind: RecordKind, payload: Record<string, unknown>) => {
@@ -198,14 +95,17 @@ export interface AppSettings {
   feedingOverdueAlarmEnabled: boolean;
   feedingOverdueDelayMinutes: number;
   keepAwakeEnabled: boolean;
-  nightDimEnabled: boolean;
+  /** 手动指定白天/黑夜主题;auto 跟随系统深色模式和夜间时段 */
+  themeMode: ThemeMode;
 }
+
+export type ThemeMode = "auto" | "light" | "dark";
 
 const DEFAULT_SETTINGS: AppSettings = {
   feedingOverdueAlarmEnabled: false,
   feedingOverdueDelayMinutes: 180,
   keepAwakeEnabled: true,
-  nightDimEnabled: true,
+  themeMode: "auto",
 };
 
 const SETTINGS_KEY = "babynote-settings";

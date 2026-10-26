@@ -1,0 +1,26 @@
+[Unit]
+Description=BabyNote Web
+After=network.target
+
+[Service]
+Type=simple
+User=babynote
+Group=babynote
+WorkingDirectory=/opt/babynote/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=DATABASE_PATH=/var/lib/babynote/babynote.sqlite
+EnvironmentFile=/etc/babynote.env
+ExecStart=/usr/bin/node /opt/babynote/current/server.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/babynote
+
+[Install]
+WantedBy=multi-user.target

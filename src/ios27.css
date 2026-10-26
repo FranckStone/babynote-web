@@ -45,7 +45,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --pink: #ff7aa8;
     --orange: #ffa45c;
     --yellow: #ffcf4d;
@@ -341,7 +341,52 @@ select:focus {
 }
 
 .quick-action-button.feeding {
+  --quick-action-rgb: 83 127 115;
   border-radius: 30px;
+  background: rgb(83 127 115 / 10%);
+}
+
+/* 确认弹窗用白底与玫瑰粉强调操作。 */
+.record-delete-backdrop {
+  background: rgb(45 35 40 / 28%);
+}
+
+.record-delete-confirmation {
+  border-color: var(--card-edge);
+  background: var(--surface);
+  box-shadow: 0 18px 64px rgb(76 36 62 / 24%);
+}
+
+.record-delete-heading strong {
+  color: var(--heading);
+}
+
+.record-delete-icon {
+  background: var(--tone-rose);
+  color: var(--pink);
+}
+
+.record-delete-actions button {
+  background: var(--surface-variant);
+  color: var(--cancel-color);
+}
+
+.record-delete-actions .record-delete-confirm {
+  background: var(--pink);
+  color: var(--surface);
+  box-shadow: 0 4px 12px rgb(224 69 123 / 14%);
+}
+
+.record-delete-actions button:focus-visible {
+  outline-color: var(--cancel-color);
+}
+
+.record-delete-actions button:active:not(:disabled) {
+  background: var(--surface-variant);
+}
+
+.record-delete-actions .record-delete-confirm:active:not(:disabled) {
+  background: #b93160;
 }
 
 .toggle-switch {

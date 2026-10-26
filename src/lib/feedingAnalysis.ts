@@ -83,6 +83,26 @@ function summarize(days: FeedingDay[]): PeriodSummary | null {
   };
 }
 
+/** Intervals only use feeds inside the selection, including gaps across empty days. */
+export function scopeFeedingIntervals(days: FeedingDay[]): FeedingDay[] {
+  let previousStart: number | null = null;
+  return days.map((day) => {
+    let longestGapHours: number | null = null;
+    for (const feed of day.feeds) {
+      if (previousStart != null) {
+        longestGapHours = Math.max(longestGapHours ?? 0, (feed.startedAt - previousStart) / 3_600_000);
+      }
+      previousStart = feed.startedAt;
+    }
+    return { ...day, longestGapHours };
+  });
+}
+
+/** Chosen calendar days all count toward daily averages, including today. */
+export function summarizeFeedingRange(days: FeedingDay[]): PeriodSummary | null {
+  return summarize(scopeFeedingIntervals(days));
+}
+
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);

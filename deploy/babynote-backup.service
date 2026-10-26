@@ -1,0 +1,7 @@
+[Unit]
+Description=Back up BabyNote SQLite
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/babynote-backup
+UMask=0077

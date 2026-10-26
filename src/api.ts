@@ -40,7 +40,16 @@ export const api = {
 
   me: () => request<SessionInfo>("/api/me"),
 
-  fetchRecords: () => request<AllRecords>("/api/records"),
+  fetchRecords: async () => {
+    const controller = new AbortController();
+    // iPad 切网时 fetch 可能长期不结束，不能让一次挂起阻塞后续同步。
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    try {
+      return await request<AllRecords>("/api/records", { signal: controller.signal, cache: "no-store" });
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  },
 
   create: <T>(kind: RecordKind, payload: Record<string, unknown>) =>
     request<T>(`/api/${kind}`, { method: "POST", body: JSON.stringify(payload) }),

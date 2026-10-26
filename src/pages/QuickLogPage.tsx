@@ -92,12 +92,12 @@ export function QuickLogPage() {
     }
   };
 
-  const quickActionContent = (action: QuickAction, icon: IconName, label: string) => {
+  const quickActionContent = (action: QuickAction, icon: IconName | null, label: string) => {
     const status = quickActionStatus[action];
     if (status === "saving") return <><span className="quick-action-spinner" aria-hidden="true" />记录中…</>;
     if (status === "success") return <><Icon name="check" size="1em" strokeWidth={2.4} />已记录</>;
     if (status === "error") return <><Icon name="alert" size="1em" strokeWidth={2.2} />失败，请重试</>;
-    return <><Icon name={icon} size="1em" strokeWidth={2.2} />{label}</>;
+    return <>{icon && <Icon name={icon} size="1em" strokeWidth={2.2} />}{label}</>;
   };
 
   // 行内奶量调整先缓存,0.45 秒无操作再落库
@@ -173,7 +173,7 @@ export function QuickLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records.feedings, now, pendingAmounts]);
 
-  const previousFeeding = records.feedings.find((record) => record.startedAt < now) ?? null;
+  const previousFeeding = records.feedings.find((record) => record.startedAt <= now) ?? null;
   const previousFeedingStart = previousFeeding?.startedAt ?? null;
 
   // 对齐到“距上次喂奶”的整秒边界再刷新,让秒数文字和匀速进度环在同一刻进位
@@ -192,23 +192,27 @@ export function QuickLogPage() {
   }, [tickPhase]);
   const hasAmount = amountText.trim() !== "" && Number.isFinite(Number(amountText.trim()));
 
-  const feedingButton = (label: string) => (
+  const feedingButton = (label: string, amountML: number | null = hasAmount ? Number(amountText.trim()) : null) => (
     <button
       type="button"
       className={`primary-button quick-action-button feeding ${quickActionStatus.feeding}`}
-      disabled={!hasAmount || quickActionStatus.feeding === "saving" || quickActionStatus.feeding === "success"}
+      disabled={amountML == null || quickActionStatus.feeding === "saving" || quickActionStatus.feeding === "success"}
       aria-busy={quickActionStatus.feeding === "saving"}
       aria-live="polite"
-      onClick={() =>
-        runQuickAction("feeding", () => create("feeding", {
-          startedAt: Date.now(),
-          feedingType: "formula",
-          amountML: Number(amountText.trim()),
-          note: "",
-        }))
-      }
+      onClick={() => {
+        if (amountML == null) return;
+        void runQuickAction("feeding", async () => {
+          await create("feeding", {
+            startedAt: Date.now(),
+            feedingType: "formula",
+            amountML,
+            note: "",
+          });
+          setNow(Date.now());
+        });
+      }}
     >
-      {quickActionContent("feeding", "plus", label)}
+      {quickActionContent("feeding", null, label)}
     </button>
   );
 
@@ -222,12 +226,11 @@ export function QuickLogPage() {
     <div className="page quick-log-page">
       <h1 className="page-title">快速记录</h1>
 
-      <section className="card quick-feeding-card">
-        <h2 className="card-title">喂奶</h2>
-
+      <section className="card quick-feeding-card" aria-label="喂奶">
         <IntervalHighlight
           text={feedingIntervalText(previousFeedingStart, now)}
           runningSince={previousFeedingStart}
+          fitText
           onClick={openFullscreen}
           actionLabel="点击放大喂奶计时"
         />
@@ -278,6 +281,7 @@ export function QuickLogPage() {
             <IntervalHighlight
               text={feedingIntervalText(previousFeedingStart, now)}
               runningSince={previousFeedingStart}
+              fitText
             />
             <div className="feeding-fullscreen-meta">
               <span>
@@ -289,13 +293,12 @@ export function QuickLogPage() {
                 {threeHourStats.count > 0 ? ` · ${threeHourStats.count} 次` : ""}
               </span>
             </div>
-            {feedingButton(hasAmount ? `喂奶 ${amountText.trim()} ml` : "喂奶")}
+            {feedingButton("喂奶 120 ml", 120)}
           </div>
         </div>
       )}
 
-      <section className="card quick-excretion-card">
-        <h2 className="card-title">屎尿</h2>
+      <section className="card quick-excretion-card" aria-label="屎尿">
         <div className="row">
           <button
             type="button"

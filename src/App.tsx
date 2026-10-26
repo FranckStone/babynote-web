@@ -9,7 +9,7 @@ import { QuickLogPage } from "./pages/QuickLogPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatsPage } from "./pages/StatsPage";
 import { TimelinePage } from "./pages/TimelinePage";
-import { DataProvider, useData, useSettings, type AppSettings } from "./store";
+import { DataProvider, useData, useSettings, type AppSettings, type ThemeMode } from "./store";
 
 type AuthState = "checking" | "unauthed" | "authed";
 
@@ -22,6 +22,12 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+const THEME_MODES: Record<ThemeMode, { next: ThemeMode; label: string; icon: "sunMoon" | "sun" | "moon" }> = {
+  auto: { next: "light", label: "自动", icon: "sunMoon" },
+  light: { next: "dark", label: "白天", icon: "sun" },
+  dark: { next: "auto", label: "黑夜", icon: "moon" },
+};
 
 const TAB_PATHS: Record<TabKey, string> = {
   home: "/",
@@ -47,7 +53,7 @@ export function App() {
   const [shareError, setShareError] = useState("");
   const [settings] = useSettings();
 
-  useNightDimming(settings.nightDimEnabled);
+  useNightDimming(settings.themeMode);
 
   useEffect(() => {
     const expired = () => {
@@ -266,6 +272,9 @@ function AuthedApp({ settings, onLogout }: { settings: AppSettings; onLogout: ()
   // Wake Lock 保持屏幕常亮
   useWakeLock(settings.keepAwakeEnabled);
 
+  const [, updateSettings] = useSettings();
+  const themeMode = THEME_MODES[settings.themeMode] ?? THEME_MODES.auto;
+
   return (
     <div className="app">
       {tab === "home" && <HomePage />}
@@ -281,6 +290,17 @@ function AuthedApp({ settings, onLogout }: { settings: AppSettings; onLogout: ()
           </span>
         </div>
       )}
+
+      <button
+        type="button"
+        className="theme-toggle"
+        aria-label={`主题:${themeMode.label},点击切换`}
+        title={`主题:${themeMode.label}`}
+        onClick={() => updateSettings({ themeMode: themeMode.next })}
+      >
+        <Icon name={themeMode.icon} size={20} />
+        <span>{themeMode.label}</span>
+      </button>
 
       <nav className="tab-bar">
         <div className="tab-bar-inner">
@@ -313,9 +333,13 @@ function AuthedApp({ settings, onLogout }: { settings: AppSettings; onLogout: ()
   );
 }
 
-function useNightDimming(enabled: boolean) {
+function useNightDimming(mode: ThemeMode) {
   useEffect(() => {
     const root = document.documentElement;
+    // 手动模式写到 data-theme:CSS 用它屏蔽系统深色媒体查询。
+    // 不支持 prefers-color-scheme 的老 iPad 也能靠"黑夜"直接切到夜间配色。
+    if (mode === "auto") delete root.dataset.theme;
+    else root.dataset.theme = mode;
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     let transitionTimer = 0;
 
@@ -324,7 +348,7 @@ function useNightDimming(enabled: boolean) {
 
       const now = new Date();
       const hour = now.getHours();
-      const isNight = enabled && (hour >= 20 || hour < 7);
+      const isNight = mode === "dark" || (mode === "auto" && (hour >= 20 || hour < 7));
 
       if (isNight) {
         root.dataset.nightDim = "true";
@@ -334,7 +358,7 @@ function useNightDimming(enabled: boolean) {
         themeColor?.setAttribute("content", "#e91e63");
       }
 
-      if (!enabled) return;
+      if (mode !== "auto") return;
 
       const nextTransition = new Date(now);
       if (hour >= 20) {
@@ -359,9 +383,10 @@ function useNightDimming(enabled: boolean) {
       window.clearTimeout(transitionTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       delete root.dataset.nightDim;
+      delete root.dataset.theme;
       themeColor?.setAttribute("content", "#e91e63");
     };
-  }, [enabled]);
+  }, [mode]);
 }
 
 function useWakeLock(enabled: boolean) {

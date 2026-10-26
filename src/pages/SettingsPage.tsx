@@ -270,23 +270,6 @@ export function SettingsPage({ onLogout }: { onLogout: () => void }) {
         <span className="muted" style={{ fontSize: 12 }}>
           开启后会阻止 iPad 自动息屏；页面切到后台时会自动释放，回到前台后重新申请。低电量模式或系统拒绝时可能无法保持常亮。
         </span>
-
-        <hr className="settings-divider" />
-
-        <label className="row" style={{ cursor: "pointer" }}>
-          <span style={{ flex: 1 }}>夜间自动柔光</span>
-          <span className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={settings.nightDimEnabled}
-              onChange={(event) => updateSettings({ nightDimEnabled: event.target.checked })}
-            />
-            <span className="toggle-track" aria-hidden="true" />
-          </span>
-        </label>
-        <span className="muted" style={{ fontSize: 12 }}>
-          每晚 20:00 至次日 07:00 自动降低网页亮度和色彩刺激，白天自动恢复。
-        </span>
       </section>
 
       <section className="card settings-alarm-card">

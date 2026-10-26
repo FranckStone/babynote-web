@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew BabyNote HTTPS IP certificate
+Wants=network-online.target
+After=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/babynote-certbot/bin/certbot renew --quiet --config-dir /etc/letsencrypt-ip --work-dir /var/lib/letsencrypt-ip --logs-dir /var/log/letsencrypt-ip

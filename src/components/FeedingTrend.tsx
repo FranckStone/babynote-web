@@ -2,11 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import type { FeedingRecord, WeightRecord } from "../../shared/types";
 import { streamFeedingAnalysis } from "../api";
 import { DateDisplay, formatFeedingAmount } from "../lib/display";
+import { resolveDayRange, type DayRange } from "../lib/feedingRange";
+import { FeedingRangeSelector } from "./FeedingRangeSelector";
 import {
   AMOUNT_BANDS,
   analyzeFeedings,
   buildAISummary,
   buildInsights,
+  summarizeFeedingRange,
+  scopeFeedingIntervals,
   type FeedingAnalysis,
   percentChange,
   type AmountBandKey,
@@ -19,6 +23,7 @@ const RANGE_OPTIONS = [
   { label: "14 天", days: 14 },
   { label: "30 天", days: 30 },
   { label: "90 天", days: 90 },
+  { label: "全部", days: null },
 ];
 
 const BAND_COLORS: Record<AmountBandKey, string> = {
@@ -41,41 +46,60 @@ const hoursText = (hours: number) => {
 export function FeedingTrend({ feedings, weights }: { feedings: FeedingRecord[]; weights: WeightRecord[] }) {
   const analysis = useMemo(() => analyzeFeedings(feedings, weights), [feedings, weights]);
   const insights = useMemo(() => buildInsights(analysis), [analysis]);
-  const [rangeIndex, setRangeIndex] = useState(0);
+  const [rangeIndex, setRangeIndex] = useState(RANGE_OPTIONS.length - 1);
+  const [customDates, setCustomDates] = useState<DayRange | null>(null);
 
-  if (analysis.days.length === 0 || !analysis.recent) return null;
+  if (analysis.days.length === 0) return null;
 
-  const visibleDays = analysis.days.slice(-RANGE_OPTIONS[rangeIndex].days);
-  const { recent, previous } = analysis;
+  const rangeDays = RANGE_OPTIONS[rangeIndex].days;
+  const range = resolveDayRange(analysis.days.map((day) => day.day), rangeDays, customDates);
+  const visibleDays = scopeFeedingIntervals(analysis.days.slice(range.start, range.end + 1));
+  const selectRange = (next: DayRange) => {
+    if (next.start === 0 && next.end === analysis.days.length - 1) {
+      setCustomDates(null);
+      setRangeIndex(RANGE_OPTIONS.length - 1);
+    } else {
+      setCustomDates({ start: analysis.days[next.start].day, end: analysis.days[next.end].day });
+    }
+  };
+  const selected = summarizeFeedingRange(visibleDays)!;
+  const previous = range.start >= visibleDays.length
+    ? summarizeFeedingRange(analysis.days.slice(range.start - visibleDays.length, range.start))
+    : null;
+  const selectedDates = `${new Date(visibleDays[0].day).toLocaleDateString("zh-CN")} — ${new Date(visibleDays[visibleDays.length - 1].day).toLocaleDateString("zh-CN")}`;
 
   return (
     <div className="feeding-trend">
       <div className="feeding-trend-tiles">
         <StatTile
           label="日均奶量"
-          value={`${Math.round(recent.dailyML)} ml`}
-          delta={deltaText(recent, previous, (period) => period.dailyML)}
+          value={`${Math.round(selected.dailyML)} ml`}
+          delta={deltaText(selected, previous, (period) => period.dailyML)}
         />
         <StatTile
           label="每顿平均"
-          value={recent.perFeedML != null ? `${Math.round(recent.perFeedML)} ml` : "—"}
-          delta={deltaText(recent, previous, (period) => period.perFeedML)}
+          value={selected.perFeedML != null ? `${Math.round(selected.perFeedML)} ml` : "—"}
+          delta={deltaText(selected, previous, (period) => period.perFeedML)}
         />
         <StatTile
           label="每天顿数"
-          value={`${recent.feedsPerDay.toFixed(1)} 顿`}
-          delta={deltaText(recent, previous, (period) => period.feedsPerDay)}
+          value={`${selected.feedsPerDay.toFixed(1)} 顿`}
+          delta={deltaText(selected, previous, (period) => period.feedsPerDay)}
         />
         <StatTile
           label="最长间隔"
-          value={recent.longestGapHours != null ? hoursText(recent.longestGapHours) : "—"}
-          delta={previous?.longestGapHours != null ? `前 7 天 ${hoursText(previous.longestGapHours)}` : null}
+          value={selected.longestGapHours != null ? hoursText(selected.longestGapHours) : "—"}
+          delta={previous?.longestGapHours != null ? `上一时段 ${hoursText(previous.longestGapHours)}` : null}
         />
       </div>
-      <p className="muted feeding-trend-footnote">近 7 个完整天，不含今天{previous ? "；箭头为与前 7 天对比" : ""}</p>
+      <p className="muted feeding-trend-footnote">
+        所选时段：{selectedDates}（{selected.days} 天）
+        {visibleDays.some((day) => day.isToday) ? "；含今天未结束的数据" : ""}
+        {previous ? "；与前一等长时段对比" : ""}
+      </p>
 
       <section className="card">
-        <h2 className="card-title">趋势分析</h2>
+        <h2 className="card-title">近 7 天趋势分析</h2>
         <ul className="feeding-insights">
           {insights.map((insight) => (
             <li key={insight.text} className={insight.tone === "attention" ? "attention" : ""}>
@@ -89,9 +113,11 @@ export function FeedingTrend({ feedings, weights }: { feedings: FeedingRecord[];
 
       <Segmented
         options={RANGE_OPTIONS.map((option) => option.label)}
-        selectedIndex={rangeIndex}
-        onSelect={setRangeIndex}
+        selectedIndex={customDates == null ? rangeIndex : -1}
+        onSelect={(index) => { setRangeIndex(index); setCustomDates(null); }}
       />
+
+      <FeedingRangeSelector days={analysis.days} range={range} onChange={selectRange} />
 
       <section className="card">
         <h2 className="card-title">每日奶量</h2>
@@ -377,6 +403,7 @@ function ColumnChart({
 }) {
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  useEffect(() => setActiveIndex(null), [days]);
 
   const plotWidth = Math.max(width - MARGIN.left - MARGIN.right, 0);
   const plotHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;

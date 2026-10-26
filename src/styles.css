@@ -18,7 +18,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #141216;
     --surface: #1d1b1e;
     --surface-variant: #2a272b;
@@ -27,7 +27,8 @@
   }
 }
 
-:root[data-night-dim="true"] {
+/* 多一个 :not() 提高优先级,压过 ios27.css 里后出现的系统深色配色 */
+:root[data-night-dim="true"]:not([data-theme="light"]) {
   color-scheme: dark;
   --pink: #d84b7d;
   --orange: #ce701f;
@@ -133,6 +134,29 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* ---------- 主题切换(右上角) ---------- */
+
+.theme-toggle {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--surface-variant);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 /* ---------- 底部导航 ---------- */
@@ -401,7 +425,11 @@ select:focus {
   transition: opacity 120ms ease, transform 160ms ease-out;
 }
 
-.quick-action-button:focus-visible,
+.quick-action-button:focus-visible {
+  outline: 2px solid rgb(var(--quick-action-rgb) / 72%);
+  outline-offset: -2px;
+}
+
 .amount-shortcut:focus-visible,
 .pill-row button:focus-visible {
   outline: 2px solid rgb(233 30 99 / 72%);
@@ -414,8 +442,14 @@ select:focus {
   border-radius: 18px;
   font-size: 28px;
   gap: 10px;
-  --quick-action-rgb: 233 30 99;
-  color: var(--pink);
+  --quick-action-rgb: 0 137 123;
+  color: var(--teal);
+}
+
+.quick-feeding-card > .quick-action-button.feeding {
+  min-height: 144px;
+  font-size: 36px;
+  gap: 12px;
 }
 
 .quick-action-button.poop {
@@ -686,82 +720,36 @@ select:focus {
 }
 
 /*
- * 进度环:左右两个半边容器各自裁掉一半,里面的纯色块绕中心旋转扫出扇形。
- * 只动画 transform,由合成层匀速驱动,不会像动画 conic-gradient 那样让
+ * 进度环:沿四条边各放一段色条(上边右半、右边、下边、左边、上边左半),色条在各自的裁剪框里平移进入,
+ * 前沿始终垂直于边框。只动画 transform,不会像动画 conic-gradient 那样让
  * Safari 主线程 60fps 重绘(那样长时间挂机后页面会被 iOS 回收成白屏)。
+ * 色条粗 16px(= 外圆角),内部被 ::before 的底色盖住,只露出 4px 边框;圆角由外层 overflow 裁出。
  */
 .interval-progress {
-  --interval-offset: 0ms;
   position: absolute;
   inset: -4px;
   z-index: -1;
   border-radius: 16px;
   overflow: hidden;
-  container-type: size;
   pointer-events: none;
 }
 
-.interval-progress-half {
+.interval-progress-bar {
   position: absolute;
-  top: 0;
-  bottom: 0;
   overflow: hidden;
 }
 
-.interval-progress-half.right {
-  left: 50%;
-  right: 0;
-}
+.interval-progress-bar.top-right { top: 0; left: 50%; right: 0; height: 16px; }
+.interval-progress-bar.right { top: 16px; bottom: 16px; right: 0; width: 16px; }
+.interval-progress-bar.bottom { bottom: 0; left: 0; right: 0; height: 16px; }
+.interval-progress-bar.left { top: 16px; bottom: 16px; left: 0; width: 16px; }
+.interval-progress-bar.top-left { top: 0; left: 0; right: 50%; height: 16px; }
 
-.interval-progress-half.left {
-  left: 0;
-  right: 50%;
-}
-
-.interval-progress-half > span {
-  --interval-diameter: hypot(100cqw, 100cqh);
+.interval-progress-bar > span {
   position: absolute;
-  top: calc(50% - var(--interval-diameter) / 2);
-  width: calc(var(--interval-diameter) / 2 + 1px);
-  height: var(--interval-diameter);
+  inset: 0;
   background: var(--pink);
   will-change: transform;
-  animation: 60s linear var(--interval-offset) infinite both;
-}
-
-/* 右半边:色块起始在圆心左侧(被裁掉),前 30 秒顺时针转到右侧 */
-.interval-progress-half.right > span {
-  right: 100%;
-  transform-origin: 100% 50%;
-  animation-name: interval-sweep-first-half;
-}
-
-/* 左半边:色块起始在圆心右侧(被裁掉),后 30 秒顺时针转到左侧 */
-.interval-progress-half.left > span {
-  left: 100%;
-  transform-origin: 0 50%;
-  animation-name: interval-sweep-second-half;
-}
-
-.interval-progress.paused .interval-progress-half > span {
-  animation-play-state: paused;
-}
-
-@keyframes interval-sweep-first-half {
-  0% { transform: rotate(0deg); }
-  50%, 100% { transform: rotate(180deg); }
-}
-
-@keyframes interval-sweep-second-half {
-  0%, 50% { transform: rotate(0deg); }
-  100% { transform: rotate(180deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* 减少动态效果时退回每秒走一格 */
-  .interval-progress-half > span {
-    animation-timing-function: steps(30, end);
-  }
 }
 
 .interval-highlight .label {
@@ -776,6 +764,20 @@ select:focus {
   line-height: 1;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.quick-feeding-card .interval-highlight .value {
+  font-size: 32px;
+  font-size: clamp(32px, 4vw, 44px);
+}
+
+.interval-highlight .value.fit-text {
+  min-width: 0;
+}
+
+.interval-highlight .value.fit-text > span {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .amount-display {
@@ -934,6 +936,129 @@ select:focus {
   grid-column: 1 / -1;
   color: var(--pink);
   font-size: 13px;
+}
+
+.record-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgb(0 0 0 / 24%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.record-delete-confirmation {
+  width: 100%;
+  max-width: 380px;
+  max-height: calc(100vh - 48px);
+  min-width: 0;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid rgb(127 127 127 / 12%);
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: 0 18px 64px rgb(0 0 0 / 20%);
+  animation: record-delete-reveal 160ms ease-out;
+}
+
+.record-delete-confirmation:focus {
+  outline: none;
+}
+
+.record-delete-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.record-delete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: rgb(229 57 53 / 9%);
+  color: var(--red);
+}
+
+.record-delete-heading strong {
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.record-delete-heading p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.record-delete-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.record-delete-actions button {
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-variant);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.record-delete-actions .record-delete-confirm {
+  background: rgb(229 57 53 / 12%);
+  color: var(--red);
+}
+
+.record-delete-actions button:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}
+
+.record-delete-actions button:active:not(:disabled) {
+  background: var(--surface-variant);
+}
+
+.record-delete-actions .record-delete-confirm:active:not(:disabled),
+.delete-button.is-confirming {
+  background: rgb(229 57 53 / 20%);
+}
+
+.record-delete-actions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.record-delete-confirmation .record-delete-error {
+  display: block;
+  margin: 0 0 12px;
+  color: var(--red);
+}
+
+@keyframes record-delete-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-delete-confirmation {
+    animation: none;
+  }
 }
 
 .delete-button:disabled {
@@ -1231,7 +1356,7 @@ select:focus {
   border: 1px solid rgb(229 57 53 / 16%);
 }
 
-/* iPad / 桌面：喂奶计时是最常看的数字，放到最大。 */
+/* iPad / 桌面：喂奶计时保持清晰，字号适度收小。 */
 @media (min-width: 768px) {
   .quick-feeding-card .interval-highlight {
     min-height: 180px;
@@ -1239,7 +1364,8 @@ select:focus {
   }
 
   .quick-feeding-card .interval-highlight .value {
-    font-size: clamp(72px, 11vw, 104px);
+    font-size: 40px;
+    font-size: clamp(40px, 5vw, 56px);
   }
 
   .quick-records-scroll .list-row {
@@ -1327,7 +1453,8 @@ select:focus {
   }
 
   .quick-feeding-card .interval-highlight .value {
-    font-size: clamp(52px, 6vw, 84px);
+    font-size: 32px;
+    font-size: clamp(32px, 3.5vw, 48px);
   }
 
   .quick-records-card .list-row {
@@ -1450,6 +1577,7 @@ select:focus {
 
 .feeding-fullscreen-body {
   width: min(100%, 980px);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -2522,7 +2650,24 @@ input[type="range"] {
   }
 
   .quick-feeding-card {
+    /* 卡片撑满两行，计时区保持紧凑；矮屏保留卡片内滚动。 */
+    align-self: stretch;
     min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .quick-feeding-card > * {
+    flex-shrink: 0;
+  }
+
+  .quick-feeding-card .interval-highlight {
+    flex: 1 0 160px;
+    max-height: 180px;
+  }
+
+  .quick-feeding-card > .quick-action-button {
+    flex: 1 0 144px;
   }
 
   .quick-records-card {
@@ -2567,12 +2712,13 @@ input[type="range"] {
   }
 
   .quick-feeding-card .interval-highlight {
+    flex-basis: 124px;
     min-height: 124px;
     padding: 10px 14px;
   }
 
   .quick-feeding-card .interval-highlight .value {
-    font-size: clamp(52px, 6vw, 72px);
+    font-size: clamp(32px, 3.5vw, 44px);
   }
 
   .quick-feeding-card > .row {
@@ -2580,19 +2726,19 @@ input[type="range"] {
   }
 
   .quick-feeding-card .amount-shortcut {
-    min-height: 30px;
+    min-height: 44px;
   }
 
   .quick-feeding-card .amount-display {
-    min-height: 50px;
+    min-height: 56px;
   }
 
   .quick-feeding-card .amount-display .value {
-    font-size: 25px;
+    font-size: 30px;
   }
 
   .quick-feeding-card .pill-row button {
-    min-height: 30px;
+    min-height: 44px;
   }
 
 }
@@ -2665,7 +2811,7 @@ input[type="range"] {
 }
 
 @media (prefers-color-scheme: dark) {
-  .feeding-trend {
+  :root:not([data-theme="light"]) .feeding-trend {
     --feed-band-medium: color-mix(in srgb, var(--pink) 80%, var(--surface));
     --feed-band-small: color-mix(in srgb, var(--pink) 60%, var(--surface));
   }
@@ -2681,6 +2827,62 @@ input[type="range"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+
+.feeding-range-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feeding-range-heading .card-title { margin-bottom: 4px; }
+.feeding-range-dates { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.feeding-range-track {
+  position: relative;
+  height: 60px;
+  margin: 18px 28px 12px;
+  background: var(--surface-variant);
+  border-radius: 5px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.feeding-range-track svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.feeding-range-track svg path { fill: var(--pink); opacity: 0.45; }
+.feeding-range-shade { position: absolute; top: 0; bottom: 0; background: var(--surface); opacity: 0.7; pointer-events: none; }
+
+.feeding-range-window {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  border: 2px solid var(--pink);
+  background: color-mix(in srgb, var(--pink) 8%, transparent);
+  cursor: grab;
+}
+
+.feeding-range-handle {
+  position: absolute;
+  top: -6px;
+  width: 28px;
+  height: 72px;
+  padding: 0;
+  border: 2px solid var(--pink);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--pink);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.feeding-range-handle.start { transform: translateX(-100%); }
+.feeding-range-handle span { display: inline-block; width: 2px; height: 20px; border-radius: 2px; background: currentColor; box-shadow: 5px 0 currentColor; transform: translateX(-2px); }
+.feeding-range-handle:disabled { cursor: default; opacity: 0.5; }
+.feeding-range-window:focus-visible, .feeding-range-handle:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.feeding-range-track.is-dragging .feeding-range-window { cursor: grabbing; }
+.feeding-range-axis { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.feeding-range-hint { margin: 8px 0 0; }
 
 @media (min-width: 768px) {
   .feeding-trend-tiles {
